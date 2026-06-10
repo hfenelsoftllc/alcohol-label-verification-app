@@ -1,0 +1,10 @@
+# Trivy ignore list — suppressed image vulnerabilities.
+#
+# The Docker CI job fails on any CRITICAL CVE. To suppress a finding, add its
+# CVE ID below WITH a justification comment and (ideally) an expiry date.
+# Unjustified suppressions are rejected in review (see ISSUE 2.6).
+#
+# Format:
+#   CVE-2024-XXXXX  # justification — owner — review-by YYYY-MM-DD
+#
+# (no suppressions yet)
