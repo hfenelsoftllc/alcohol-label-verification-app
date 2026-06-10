@@ -6,13 +6,13 @@ deliverable is a complete, assessable package.
 
 ## Artifacts (built across phases)
 
-| File | Phase | Issue |
-|------|-------|-------|
-| `SSP-draft.md` → `SSP-final.md` | 1 → 4 | 1.6, 4.5 |
-| `DATA-FLOW.md` → `DATA-FLOW-final.md` | 1 → 4 | 1.7, 4.5 |
-| `SAST-RESULTS.md` | 2, 4 | 2.6, 4.5 |
-| `SESSION-MANAGEMENT.md` | 3 | 3.7 |
-| `THREAT-MODEL.md` | 4 | 4.6 |
-| `POAM.md`, `CONTROL-MATRIX.xlsx`, `INCIDENT-RESPONSE-PLAN.md`, `SYSTEM-BOUNDARY.png` | 4 | 4.5 |
+| File | Phase | Issue | Status |
+|------|-------|-------|--------|
+| `SSP-draft.md` → `SSP-final.md` | 1 → 4 | 1.6, 4.5 | Draft complete |
+| `DATA-FLOW.md` → `DATA-FLOW-final.md` | 1 → 4 | 1.7, 4.5 | Pending |
+| `SAST-RESULTS.md` | 2, 4 | 2.6, 4.5 | Baseline complete |
+| `SESSION-MANAGEMENT.md` | 3 | 3.7 | Pending |
+| `THREAT-MODEL.md` | 4 | 4.6 | Pending |
+| `POAM.md`, `CONTROL-MATRIX.xlsx`, `INCIDENT-RESPONSE-PLAN.md`, `SYSTEM-BOUNDARY.png` | 4 | 4.5 | Pending |
 
 System categorization: **Moderate** (C=M, I=M, A=M) per FIPS 199.
