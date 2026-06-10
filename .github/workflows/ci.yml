@@ -172,7 +172,7 @@ jobs:
 
       - name: Scan backend image (Trivy)
         if: steps.detect.outputs.backend == 'true'
-        uses: aquasecurity/trivy-action@v0.30.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: alvf-backend:ci
           format: sarif
@@ -187,7 +187,7 @@ jobs:
 
       - name: Scan frontend image (Trivy)
         if: steps.detect.outputs.frontend == 'true'
-        uses: aquasecurity/trivy-action@v0.30.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: alvf-frontend:ci
           format: sarif
