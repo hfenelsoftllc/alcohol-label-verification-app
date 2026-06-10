@@ -1,0 +1,13 @@
+[bandit]
+# Bandit configuration — suppressed findings require documented justification.
+#
+# CI runs: bandit -r backend -f sarif -o bandit.sarif --severity-level high --confidence-level high
+# Only HIGH severity + HIGH confidence findings fail the build (ISSUE 2.6).
+#
+# To suppress a specific finding, use an inline `# nosec B<id> -- justification`
+# comment at the flagged line, reviewed in the PR that adds it — not a global
+# skip here. See docs/fedramp/SAST-RESULTS.md for the current baseline.
+#
+# skips: B101,B601
+#
+# (no global skips currently)
