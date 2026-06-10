@@ -107,6 +107,13 @@ class GovernmentWarningCheck(BaseModel):
     issues: list[str] = Field(default_factory=list)
 
 
+class MatchReport(BaseModel):
+    """Result of comparing extracted label fields against application data (ISSUE 2.4)."""
+
+    overall_status: OverallStatus
+    fields: list[FieldComparison]
+
+
 class VerificationResult(BaseModel):
     """Full verification outcome for a single label."""
 
