@@ -1,33 +1,76 @@
 @import 'tailwindcss';
 
 /*
- * Accessible color tokens (WCAG 2.1 AA).
- * Contrast ratios against the surfaces they're used on:
- *   --color-brand-700 (#1d4ed8) on white  = 5.17:1  (AA normal text)
- *   --color-ink       (#0f172a) on white  = 16.1:1  (AAA)
- *   --color-muted     (#475569) on white  = 7.0:1   (AA / AAA large)
- *   white on --color-brand-700            = 5.17:1  (AA)
- * Status colors are always paired with an icon + text label (never color alone).
+ * U.S. Treasury / TTB visual identity.
+ * Deep emerald green (currency / the Treasury seal) + brass-gold accents on a
+ * warm parchment ground. Every pairing below meets WCAG 2.1 AA:
+ *   white on --color-treasury-800 (#0a3b2c)   = 11.6:1  (AAA)
+ *   --color-treasury-700 (#0b5d44) on white   = 6.6:1   (AA)
+ *   --color-ink (#10241d) on parchment        = 14.8:1  (AAA)
+ *   --color-muted (#46564f) on parchment      = 7.1:1   (AA)
+ *   --color-gold-700 (#8a6a1f) on white       = 5.0:1   (AA, used for text)
+ * Gold lighter shades are decorative only (borders, rules, the emblem) and are
+ * never the sole carrier of meaning — status always pairs an icon + text label.
  */
 @theme {
-  --color-brand-50: #eff6ff;
-  --color-brand-600: #2563eb;
-  --color-brand-700: #1d4ed8;
-  --color-brand-800: #1e40af;
-  --color-ink: #0f172a;
-  --color-muted: #475569;
-  --color-success: #15803d; /* green-700, 4.5:1 on white */
-  --color-warning: #b45309; /* amber-700, 4.8:1 on white */
-  --color-danger: #b91c1c; /* red-700,   5.9:1 on white */
-}
+  --color-treasury-50: #eef6f1;
+  --color-treasury-100: #d4e9df;
+  --color-treasury-200: #a8d2bf;
+  --color-treasury-300: #6fb398;
+  --color-treasury-400: #3f9173;
+  --color-treasury-500: #1f7355;
+  --color-treasury-600: #0f6447;
+  --color-treasury-700: #0b5d44;
+  --color-treasury-800: #0a3b2c;
+  --color-treasury-900: #072a20;
+  --color-treasury-950: #041a14;
 
-/* Visible focus indicator for keyboard users (>= 3px, ISSUE 4.3). */
-:focus-visible {
-  outline: 3px solid var(--color-brand-700);
-  outline-offset: 2px;
+  --color-gold-200: #f0e2b8;
+  --color-gold-300: #e6cd8a;
+  --color-gold-400: #d9b96a;
+  --color-gold-500: #c9a24e;
+  --color-gold-600: #ab8636;
+  --color-gold-700: #8a6a1f;
+
+  --color-parchment: #f7f6f1;
+  --color-ink: #10241d;
+  --color-muted: #46564f;
+
+  --color-success: #15803d;
+  --color-warning: #b45309;
+  --color-danger: #b91c1c;
+
+  --font-display: ui-serif, Georgia, 'Times New Roman', serif;
+
+  --shadow-card: 0 1px 2px rgb(7 42 32 / 0.06), 0 8px 24px -12px rgb(7 42 32 / 0.18);
 }
 
 body {
-  background-color: #f8fafc;
+  background-color: var(--color-parchment);
+  /* Subtle layered ground: a whisper of green light, never busy. */
+  background-image:
+    radial-gradient(60rem 60rem at 110% -10%, rgb(15 100 71 / 0.06), transparent 60%),
+    radial-gradient(50rem 50rem at -10% 0%, rgb(201 162 78 / 0.05), transparent 55%);
+  background-attachment: fixed;
   color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* A serif display utility for the wordmark and page headings — official gravitas. */
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+/* Visible keyboard focus everywhere (>= 3px, ISSUE 4.3). */
+:focus-visible {
+  outline: 3px solid var(--color-treasury-600);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* On the dark green header, switch the focus ring to gold for contrast. */
+.on-dark:focus-visible {
+  outline-color: var(--color-gold-300);
 }
