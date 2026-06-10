@@ -1,0 +1,34 @@
+# CODEOWNERS — review ownership per directory
+#
+# Order matters: the LAST matching pattern takes precedence. Listed owners are
+# automatically requested for review on PRs that touch matching paths. This is
+# enforced by branch protection on `main` (requires owner approval).
+#
+# Replace the team placeholders below with real GitHub teams/usernames as the
+# project staffs up. For now all paths default to the repository owner.
+
+# Default owner for everything not matched more specifically
+*                       @hfenelsoftllc
+
+# Backend — FastAPI service, OCR, matching, batch, export
+/backend/               @hfenelsoftllc
+
+# Frontend — React + Vite SPA
+/frontend/              @hfenelsoftllc
+
+# Docker / infrastructure / CI
+/docker/                @hfenelsoftllc
+/.github/               @hfenelsoftllc
+docker-compose.yml      @hfenelsoftllc
+
+# Tests
+/tests/                 @hfenelsoftllc
+
+# Documentation & architecture
+/docs/                  @hfenelsoftllc
+
+# FedRAMP package — security/compliance ownership
+/docs/fedramp/          @hfenelsoftllc
+
+# Project management
+/project-management/    @hfenelsoftllc

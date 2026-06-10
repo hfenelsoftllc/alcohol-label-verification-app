@@ -216,3 +216,56 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---------------------------------------------------------------------------
+# Node / Frontend (React + Vite)
+# ---------------------------------------------------------------------------
+node_modules/
+.pnp
+.pnp.js
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm
+.eslintcache
+
+# Vite / build output
+frontend/dist/
+dist-ssr/
+*.local
+
+# ---------------------------------------------------------------------------
+# Environment files (never commit secrets — see .env.example)
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# ---------------------------------------------------------------------------
+# Label images & sample uploads (PII / business-sensitive — never committed)
+# Per ADR-001: images are processed ephemerally and never stored in the repo.
+# ---------------------------------------------------------------------------
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tif
+*.tiff
+*.webp
+*.heic
+*.pdf
+# Re-allow documentation/diagram assets that are intentionally tracked
+!docs/**/*.png
+!docs/**/*.jpg
+!docs/**/*.pdf
+!**/SYSTEM-BOUNDARY.png
+
+# ---------------------------------------------------------------------------
+# Editor / OS noise
+# ---------------------------------------------------------------------------
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
