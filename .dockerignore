@@ -1,0 +1,15 @@
+# Keep the build context small and reproducible.
+**/node_modules
+**/dist
+**/__pycache__
+**/*.pyc
+**/.venv
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+.git
+.github
+*.log
+# Never ship local secrets into an image layer.
+.env
+**/.env

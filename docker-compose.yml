@@ -1,0 +1,57 @@
+# Single-command deployment for the Alcohol Label Verification PoC.
+#
+#   cp .env.example .env      # then edit as needed
+#   docker compose up         # frontend + backend
+#   docker compose --profile with-redis up   # also start the optional Redis cache
+#
+# App is served at http://localhost:3000 (backend at http://localhost:8000).
+name: alcohol-label-verification
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    image: alvf-backend:latest
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      OCR_MODE: ${OCR_MODE:-auto}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-4}
+      REDIS_URL: ${REDIS_URL:-}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
+    image: alvf-frontend:latest
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    restart: unless-stopped
+
+  # Optional ephemeral result cache. Disabled by default; enable with:
+  #   docker compose --profile with-redis up
+  redis:
+    image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
+    profiles: ["with-redis"]
+    expose:
+      - "6379"
+    restart: unless-stopped
