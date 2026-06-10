@@ -13,6 +13,7 @@ from app.models import (
     ApplicationData,
     FieldComparison,
     GovernmentWarningCheck,
+    ImageQualityReport,
     MatchStatus,
     OcrEngine,
     OverallStatus,
@@ -30,6 +31,9 @@ _COMPARABLE_FIELDS = (
 
 _STUB_NOTE = "stub result — OCR/matching engines land in Phase 2"
 
+#: Below this image quality score, the result is flagged low-confidence (ISSUE 2.2).
+LOW_QUALITY_THRESHOLD = 40.0
+
 
 def new_session_id() -> str:
     return secrets.token_urlsafe(16)
@@ -40,8 +44,10 @@ def build_stub_result(
     *,
     session_id: str | None = None,
     filename: str | None = None,
+    image_quality: ImageQualityReport | None = None,
 ) -> VerificationResult:
     """Echo the application data back as a fully-matching stub result."""
+    quality = image_quality or ImageQualityReport(score=100.0, issues=[])
     fields = [
         FieldComparison(
             field=name,
@@ -52,14 +58,18 @@ def build_stub_result(
         )
         for name in _COMPARABLE_FIELDS
     ]
+    message = _STUB_NOTE
+    if quality.score < LOW_QUALITY_THRESHOLD:
+        message = f"{_STUB_NOTE}; low_confidence: image quality score {quality.score:.0f} ({', '.join(quality.issues)})"
     return VerificationResult(
         session_id=session_id or new_session_id(),
         overall_status=OverallStatus.MATCH,
         fields=fields,
         government_warning=GovernmentWarningCheck(valid=True),
-        image_quality_score=100.0,
+        image_quality_score=quality.score,
+        quality_issues=quality.issues,
         confidence_score=100.0,
         ocr_engine_used=OcrEngine.CLAUDE_VISION,
         filename=filename,
-        message=_STUB_NOTE,
+        message=message,
     )

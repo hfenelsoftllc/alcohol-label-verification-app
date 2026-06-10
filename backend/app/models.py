@@ -83,6 +83,13 @@ class ExtractedFields(BaseModel):
     ocr_engine_used: OcrEngine = OcrEngine.CLAUDE_VISION
 
 
+class ImageQualityReport(BaseModel):
+    """Result of automated image quality assessment (ISSUE 2.2)."""
+
+    score: float = Field(..., ge=0.0, le=100.0)
+    issues: list[str] = Field(default_factory=list)
+
+
 class FieldComparison(BaseModel):
     """Result of comparing one extracted field against the application value."""
 
@@ -108,6 +115,7 @@ class VerificationResult(BaseModel):
     fields: list[FieldComparison]
     government_warning: GovernmentWarningCheck
     image_quality_score: float = Field(..., ge=0.0, le=100.0)
+    quality_issues: list[str] = Field(default_factory=list)
     confidence_score: float = Field(..., ge=0.0, le=100.0)
     ocr_engine_used: OcrEngine
     filename: str | None = None
