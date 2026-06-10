@@ -1,0 +1,40 @@
+"""Shared test fixtures."""
+
+import base64
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app import jobstore
+from app.main import app
+
+# A real (tiny) 1x1 PNG — passes the magic-byte image check.
+PNG_1X1 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+)
+PNG_1X1_B64 = base64.b64encode(PNG_1X1).decode()
+
+
+@pytest.fixture
+def client() -> TestClient:
+    jobstore.clear()
+    return TestClient(app)
+
+
+@pytest.fixture
+def application_data() -> dict:
+    return {
+        "brand": "Stone's Throw",
+        "class_type": "Vodka",
+        "abv": "40% Alc. by Vol.",
+        "net_contents": "750 mL",
+        "name_address": "Stone's Throw Distillery, Louisville, KY",
+        "country_of_origin": "United States",
+        "government_warning": (
+            "GOVERNMENT WARNING: (1) According to the Surgeon General, women "
+            "should not drink alcoholic beverages during pregnancy because of "
+            "the risk of birth defects. (2) Consumption of alcoholic beverages "
+            "impairs your ability to drive a car or operate machinery, and may "
+            "cause health problems."
+        ),
+    }
