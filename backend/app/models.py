@@ -101,10 +101,12 @@ class FieldComparison(BaseModel):
 
 
 class GovernmentWarningCheck(BaseModel):
-    """Exact-match validation outcome for the Government Warning."""
+    """Exact-match validation outcome for the Government Warning (ISSUE 2.5)."""
 
     valid: bool
     issues: list[str] = Field(default_factory=list)
+    extracted_text: str | None = None
+    expected_text: str | None = None
 
 
 class MatchReport(BaseModel):
