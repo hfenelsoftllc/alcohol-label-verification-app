@@ -12,6 +12,7 @@ from app.models import (
 )
 from app.stubs import build_stub_result
 from app.validation import decode_base64_image, validate_image_bytes, validate_upload
+from ocr.quality import assess_image_quality
 
 router = APIRouter(tags=["verification"])
 
@@ -29,7 +30,8 @@ def verify(request: VerifyRequest) -> VerificationResult:
     """Decode and validate the image, then return a (stub) verification result."""
     image_bytes = decode_base64_image(request.image)
     validate_image_bytes(image_bytes)
-    return build_stub_result(request.application_data)
+    image_quality = assess_image_quality(image_bytes)
+    return build_stub_result(request.application_data, image_quality=image_quality)
 
 
 @router.post(
