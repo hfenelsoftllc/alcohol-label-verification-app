@@ -24,15 +24,18 @@ export default class ErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <main className="mx-auto max-w-lg p-8 text-center" role="alert">
-          <h1 className="text-2xl font-bold text-ink">Something went wrong</h1>
+        <main
+          className="mx-auto mt-16 max-w-lg rounded-2xl border border-slate-200/70 bg-white p-10 text-center shadow-card"
+          role="alert"
+        >
+          <h1 className="font-display text-2xl font-semibold text-ink">Something went wrong</h1>
           <p className="mt-3 text-muted">
             Your session is still active. You can return to the start and try again.
           </p>
           <button
             type="button"
             onClick={this.handleReload}
-            className="mt-6 rounded-md bg-brand-700 px-5 py-2.5 font-semibold text-white hover:bg-brand-800"
+            className="mt-6 inline-flex items-center rounded-lg bg-treasury-700 px-5 py-2.5 font-semibold text-white shadow-sm transition-colors hover:bg-treasury-800"
           >
             Return to start
           </button>
