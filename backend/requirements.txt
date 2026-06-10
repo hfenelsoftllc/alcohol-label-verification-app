@@ -9,3 +9,4 @@ pytesseract==0.3.13        # local Tesseract OCR fallback (needs tesseract-ocr b
 pillow==12.2.0             # image loading for Tesseract
 opencv-python-headless==4.12.0.88  # image quality assessment (no GUI deps)
 numpy==2.2.6                       # array ops for OpenCV
+rapidfuzz==3.14.5                  # fuzzy string matching for the matching engine
