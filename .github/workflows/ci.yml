@@ -178,6 +178,10 @@ jobs:
           format: sarif
           output: trivy-backend.sarif
           severity: CRITICAL
+          # Scope the SARIF *and* the exit code to CRITICAL only. Without this,
+          # the action scans all severities to build the SARIF and exit-code 1
+          # then fires on LOW/MED/HIGH too — not just CRITICAL.
+          limit-severities-for-sarif: true
           exit-code: "1"
           ignore-unfixed: true
 
@@ -193,6 +197,7 @@ jobs:
           format: sarif
           output: trivy-frontend.sarif
           severity: CRITICAL
+          limit-severities-for-sarif: true
           exit-code: "1"
           ignore-unfixed: true
 
