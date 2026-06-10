@@ -10,3 +10,4 @@ pillow==12.2.0             # image loading for Tesseract
 opencv-python-headless==4.12.0.88  # image quality assessment (no GUI deps)
 numpy==2.2.6                       # array ops for OpenCV
 rapidfuzz==3.14.5                  # fuzzy string matching for the matching engine
+structlog==26.1.0                  # structured JSON audit logging (ISSUE 2.7)

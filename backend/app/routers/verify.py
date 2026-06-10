@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, File, UploadFile, status
+from fastapi import APIRouter, File, Request, UploadFile, status
 
 from app import jobstore
+from app.audit import log_match_completed, log_ocr_completed, log_ocr_started
 from app.models import (
     BatchSubmitResponse,
     VerificationResult,
@@ -26,12 +27,27 @@ router = APIRouter(tags=["verification"])
         415: {"description": "Payload is not a recognized image"},
     },
 )
-def verify(request: VerifyRequest) -> VerificationResult:
+def verify(payload: VerifyRequest, http_request: Request) -> VerificationResult:
     """Decode and validate the image, then return a (stub) verification result."""
-    image_bytes = decode_base64_image(request.image)
+    request_id = getattr(http_request.state, "request_id", "")
+    image_bytes = decode_base64_image(payload.image)
     validate_image_bytes(image_bytes)
     image_quality = assess_image_quality(image_bytes)
-    return build_stub_result(request.application_data, image_quality=image_quality)
+
+    result = build_stub_result(payload.application_data, image_quality=image_quality)
+
+    log_ocr_started(request_id=request_id, session_id=result.session_id)
+    log_ocr_completed(
+        request_id=request_id,
+        session_id=result.session_id,
+        ocr_engine_used=result.ocr_engine_used.value,
+        confidence_score=result.confidence_score,
+    )
+    log_match_completed(request_id=request_id, session_id=result.session_id, overall_status=result.overall_status.value)
+
+    http_request.state.session_id = result.session_id
+    http_request.state.ocr_engine_used = result.ocr_engine_used.value
+    return result
 
 
 @router.post(
