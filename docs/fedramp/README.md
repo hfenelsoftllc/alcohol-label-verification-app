@@ -14,6 +14,7 @@ deliverable is a complete, assessable package.
 | `SESSION-MANAGEMENT.md` | 3 | 3.7 | Complete |
 | `PREPROCESSING-AB-TEST.md` | 4 | 4.1 | Complete |
 | `LOAD-TEST-RESULTS.md` (in `/docs`) | 4 | 4.2 | Complete |
+| `ACCESSIBILITY-REPORT.md` (in `/docs`) | 4 | 4.3 | Complete |
 | `THREAT-MODEL.md` | 4 | 4.6 | Pending |
 | `POAM.md`, `CONTROL-MATRIX.xlsx`, `INCIDENT-RESPONSE-PLAN.md`, `SYSTEM-BOUNDARY.png` | 4 | 4.5 | Pending |
 
