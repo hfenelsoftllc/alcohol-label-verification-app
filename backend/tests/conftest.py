@@ -5,6 +5,7 @@ import base64
 import pytest
 from fastapi.testclient import TestClient
 
+from app import session
 from app.main import app
 from batch import store
 
@@ -18,7 +19,18 @@ PNG_1X1_B64 = base64.b64encode(PNG_1X1).decode()
 @pytest.fixture
 def client() -> TestClient:
     store.clear()
-    return TestClient(app)
+    session.clear()
+    # https://testserver (not the default http://) so the Secure session
+    # cookie set on the first request (ISSUE 3.7) round-trips on later ones.
+    test_client = TestClient(app, base_url="https://testserver")
+    test_client.get("/health")
+    return test_client
+
+
+@pytest.fixture
+def session_id(client: TestClient) -> str:
+    """The auth session id (ISSUE 3.7) the `client` fixture has a cookie for."""
+    return session.validate_cookie(client.cookies[session.COOKIE_NAME])
 
 
 @pytest.fixture

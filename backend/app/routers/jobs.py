@@ -9,12 +9,13 @@ import json
 from collections.abc import AsyncIterator
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from app import session
 from app.models import (
     LABEL_FIELD_NAMES,
     BatchProgress,
@@ -80,9 +81,15 @@ _HEADER_FILL = PatternFill("solid", fgColor="FF0B5D44")
 _HEADER_FONT = Font(bold=True, color="FFFFFFFF")
 
 
-def _require_job(job_id: str) -> store.Job:
+def _require_job(job_id: str, session_id: str) -> store.Job:
+    """Look up `job_id`, scoped to the caller's session (ISSUE 3.7, AC5).
+
+    A job that exists but belongs to a different session is reported as
+    404, the same as a job that doesn't exist at all — so one session can't
+    use this endpoint to confirm another session's job_id is valid.
+    """
     job = store.get_job(job_id)
-    if job is None:
+    if job is None or job.session_id != session_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"job '{job_id}' not found",
@@ -110,8 +117,8 @@ def _summarize(job: store.Job) -> BatchSummary:
 
 
 @router.get("/{job_id}/status", response_model=JobStatusResponse)
-def job_status(job_id: str) -> JobStatusResponse:
-    job = _require_job(job_id)
+def job_status(job_id: str, session_id: str = Depends(session.get_session_id)) -> JobStatusResponse:
+    job = _require_job(job_id, session_id)
     return JobStatusResponse(
         job_id=job.job_id,
         state=job.state,
@@ -121,8 +128,8 @@ def job_status(job_id: str) -> JobStatusResponse:
 
 
 @router.get("/{job_id}/results", response_model=JobResultsResponse)
-def job_results(job_id: str) -> JobResultsResponse:
-    job = _require_job(job_id)
+def job_results(job_id: str, session_id: str = Depends(session.get_session_id)) -> JobResultsResponse:
+    job = _require_job(job_id, session_id)
     return JobResultsResponse(
         job_id=job.job_id,
         state=job.state,
@@ -230,8 +237,12 @@ def _export_xlsx(job: store.Job) -> Response:
         }
     },
 )
-def job_export(job_id: str, format: Literal["csv", "xlsx"] = Query("csv")) -> Response:
-    job = _require_job(job_id)
+def job_export(
+    job_id: str,
+    format: Literal["csv", "xlsx"] = Query("csv"),
+    session_id: str = Depends(session.get_session_id),
+) -> Response:
+    job = _require_job(job_id, session_id)
     return _export_xlsx(job) if format == "xlsx" else _export_csv(job)
 
 
@@ -292,8 +303,8 @@ async def _stream_progress(job: store.Job) -> AsyncIterator[str]:
     summary="Stream batch progress via Server-Sent Events",
     responses={200: {"content": {"text/event-stream": {}}, "description": "progress/error/complete SSE events"}},
 )
-async def job_stream(job_id: str) -> StreamingResponse:
-    job = _require_job(job_id)
+async def job_stream(job_id: str, session_id: str = Depends(session.get_session_id)) -> StreamingResponse:
+    job = _require_job(job_id, session_id)
     return StreamingResponse(
         _stream_progress(job),
         media_type="text/event-stream",

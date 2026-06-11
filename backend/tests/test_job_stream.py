@@ -55,14 +55,14 @@ def test_stream_emits_progress_then_complete(client, monkeypatch):
     assert complete["summary"]["match"] == 3
 
 
-def test_stream_emits_error_event_for_failed_label(client, monkeypatch):
+def test_stream_emits_error_event_for_failed_label(client, session_id, monkeypatch):
     """The orchestrator's per-label validate_image_bytes guard is defense in
     depth alongside the /verify/batch upload check (ISSUE 3.6): a corrupt
     label is reported as an `error` SSE event without aborting the batch."""
     monkeypatch.setattr(orchestrator, "extract_fields", lambda image_bytes: _matching_extracted_fields())
 
     app_data = ApplicationData(**VALID_APPLICATION_ROW)
-    job = store.create_job(total=2)
+    job = store.create_job(total=2, session_id=session_id)
     job.labels = [
         store.LabelInput(image_bytes=PNG_1X1, application_data=app_data, filename="good.png"),
         store.LabelInput(image_bytes=b"not an image", application_data=app_data, filename="bad.png"),

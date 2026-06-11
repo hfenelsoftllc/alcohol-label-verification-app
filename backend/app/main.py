@@ -12,12 +12,12 @@ from __future__ import annotations
 import time
 import uuid
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app import __version__
+from app import __version__, session
 from app.audit import configure_logging, log_error, log_request_completed, log_request_received
 from app.models import ErrorResponse, HealthResponse
 from app.routers import jobs, verify
@@ -29,6 +29,43 @@ app = FastAPI(
     version=__version__,
     description="TTB COLA automation PoC — label-vs-application verification.",
 )
+
+
+@app.middleware("http")
+async def session_authentication(request: Request, call_next):
+    """Validate or issue the browser session cookie (ISSUE 3.7).
+
+    FedRAMP IA-2/SC-23/AC-3: every request to `/jobs/*` must carry a valid
+    session cookie (403 otherwise, AC2); all other paths transparently mint
+    one on first visit (AC1) so the cookie exists before the client's first
+    batch submission. Registered before `add_request_id` below, which
+    becomes the outer middleware — so `request.state.request_id` is already
+    set, and 403s here still get request-id/audit logging (AC3).
+    """
+    session_id = session.validate_cookie(request.cookies.get(session.COOKIE_NAME))
+    issue_cookie = session_id is None and not request.url.path.startswith("/jobs/")
+
+    if session_id is None:
+        if request.url.path.startswith("/jobs/"):
+            request_id = getattr(request.state, "request_id", "")
+            log_error(
+                request_id=request_id,
+                endpoint=request.url.path,
+                status_code=status.HTTP_403_FORBIDDEN,
+                error="forbidden",
+                message="missing or invalid session",
+            )
+            return _error(request, status.HTTP_403_FORBIDDEN, "forbidden", "missing or invalid session")
+        session_id = session.create().session_id
+
+    request.state.auth_session_id = session_id
+
+    response = await call_next(request)
+
+    if issue_cookie:
+        response.set_cookie(session.COOKIE_NAME, session.sign(session_id), **session.cookie_kwargs())
+
+    return response
 
 
 @app.middleware("http")

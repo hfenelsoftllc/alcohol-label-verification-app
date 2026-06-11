@@ -63,6 +63,7 @@ def verify(payload: VerifyRequest, http_request: Request) -> VerificationResult:
     },
 )
 async def verify_batch(
+    http_request: Request,
     images: list[UploadFile] = File(..., description="Label image files"),
     application_csv: UploadFile = File(..., description="CSV of application data, one row per image"),
 ) -> BatchSubmitResponse:
@@ -70,7 +71,9 @@ async def verify_batch(
 
     Processing is driven by the client opening
     `GET /jobs/{job_id}/stream` (ISSUE 3.2); this endpoint only validates
-    inputs and hands back a job_id.
+    inputs and hands back a job_id. The job is owned by the caller's
+    session (ISSUE 3.7) — only that session can later access
+    `/jobs/{job_id}/...`.
     """
     images_bytes: list[bytes] = []
     total_bytes = 0
@@ -85,7 +88,7 @@ async def verify_batch(
     csv_bytes = await application_csv.read()
     application_rows = parse_application_csv(csv_bytes, expected_rows=len(images))
 
-    job = store.create_job(total=len(images))
+    job = store.create_job(total=len(images), session_id=http_request.state.auth_session_id)
     job.labels = [
         store.LabelInput(image_bytes=image_bytes, application_data=app_data, filename=image.filename)
         for image, image_bytes, app_data in zip(images, images_bytes, application_rows, strict=True)
