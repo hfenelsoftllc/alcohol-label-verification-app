@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from fastapi import APIRouter, File, Request, UploadFile, status
 
-from app import jobstore
 from app.audit import log_match_completed, log_ocr_completed, log_ocr_started
 from app.models import (
     BatchSubmitResponse,
@@ -13,6 +12,7 @@ from app.models import (
 )
 from app.stubs import build_stub_result
 from app.validation import decode_base64_image, validate_image_bytes, validate_upload
+from batch import store
 from ocr.quality import assess_image_quality
 
 router = APIRouter(tags=["verification"])
@@ -72,5 +72,5 @@ async def verify_batch(
     for image in images:
         validate_upload(image.content_type, image.size, image.filename)
     # application_csv is accepted and parsed by the orchestrator in Phase 3.
-    job = jobstore.create_job(total=len(images))
+    job = store.create_job(total=len(images))
     return BatchSubmitResponse(job_id=job.job_id, state=job.state, total=job.total)

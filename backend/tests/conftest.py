@@ -5,8 +5,8 @@ import base64
 import pytest
 from fastapi.testclient import TestClient
 
-from app import jobstore
 from app.main import app
+from batch import store
 
 # A real (tiny) 1x1 PNG — passes the magic-byte image check.
 PNG_1X1 = base64.b64decode(
@@ -17,7 +17,7 @@ PNG_1X1_B64 = base64.b64encode(PNG_1X1).decode()
 
 @pytest.fixture
 def client() -> TestClient:
-    jobstore.clear()
+    store.clear()
     return TestClient(app)
 
 
