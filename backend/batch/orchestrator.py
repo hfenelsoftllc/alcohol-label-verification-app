@@ -13,10 +13,8 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import AsyncIterator, Iterable
-from dataclasses import dataclass
 
 from app.models import (
-    ApplicationData,
     BatchProgress,
     GovernmentWarningCheck,
     JobState,
@@ -27,6 +25,7 @@ from app.models import (
 from app.stubs import new_session_id
 from app.validation import validate_image_bytes
 from batch import store
+from batch.store import LabelInput
 from matching import engine
 from matching.exact_validator import validate_government_warning
 from ocr.adapter import extract_fields
@@ -38,14 +37,7 @@ DEFAULT_MAX_WORKERS = 10
 #: Sentinel placed on the progress queue once every worker has finished.
 _DONE = object()
 
-
-@dataclass
-class LabelInput:
-    """One label image plus the application data to verify it against."""
-
-    image_bytes: bytes
-    application_data: ApplicationData
-    filename: str | None = None
+__all__ = ["DEFAULT_MAX_WORKERS", "LabelInput", "start_batch"]
 
 
 def _max_workers() -> int:
@@ -56,8 +48,10 @@ async def start_batch(job_id: str, label_pairs: Iterable[LabelInput]) -> AsyncIt
     """Process `label_pairs` concurrently, yielding progress as each finishes.
 
     Updates the `Job` in `batch.store`: `state` moves PENDING -> PROCESSING
-    -> COMPLETED, `completed` increments per finished label, and `results`
-    is populated in input order once the batch finishes.
+    -> COMPLETED, `completed` increments per finished label, and `results[i]`
+    is filled in (replacing its `None` placeholder) as soon as label `i`
+    finishes — so an SSE stream (ISSUE 3.2) can report partial progress to a
+    reconnecting client without waiting for the whole batch.
     """
     job = store.get_job(job_id)
     if job is None:
@@ -65,15 +59,15 @@ async def start_batch(job_id: str, label_pairs: Iterable[LabelInput]) -> AsyncIt
 
     labels = list(label_pairs)
     job.state = JobState.PROCESSING
+    job.results = [None] * len(labels)
 
-    results: list[VerificationResult | None] = [None] * len(labels)
     semaphore = asyncio.Semaphore(_max_workers())
     queue: asyncio.Queue = asyncio.Queue()
 
     async def _worker(index: int, label: LabelInput) -> None:
         async with semaphore:
             result = await asyncio.to_thread(_process_label, label)
-        results[index] = result
+        job.results[index] = result
         job.completed += 1
         await queue.put(BatchProgress(job_id=job_id, completed=job.completed, total=job.total, latest=result))
 
@@ -81,7 +75,6 @@ async def start_batch(job_id: str, label_pairs: Iterable[LabelInput]) -> AsyncIt
         try:
             await asyncio.gather(*(_worker(i, label) for i, label in enumerate(labels)))
         finally:
-            job.results = [r for r in results if r is not None]
             job.state = JobState.COMPLETED
             await queue.put(_DONE)
 
