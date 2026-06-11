@@ -13,6 +13,7 @@ deliverable is a complete, assessable package.
 | `SAST-RESULTS.md` | 2, 4 | 2.6, 4.5 | Baseline complete |
 | `SESSION-MANAGEMENT.md` | 3 | 3.7 | Complete |
 | `PREPROCESSING-AB-TEST.md` | 4 | 4.1 | Complete |
+| `LOAD-TEST-RESULTS.md` (in `/docs`) | 4 | 4.2 | Complete |
 | `THREAT-MODEL.md` | 4 | 4.6 | Pending |
 | `POAM.md`, `CONTROL-MATRIX.xlsx`, `INCIDENT-RESPONSE-PLAN.md`, `SYSTEM-BOUNDARY.png` | 4 | 4.5 | Pending |
 

@@ -98,8 +98,15 @@ def extract_fields(image_bytes: bytes) -> ExtractedFields:
 
     try:
         return _extract_with_claude(image_bytes, api_key)
-    except (anthropic.APITimeoutError, anthropic.APIConnectionError, TimeoutError, ConnectionError) as exc:
-        # Firewalled environment: fail over immediately (no retries) to Tesseract.
+    except (
+        anthropic.APITimeoutError,
+        anthropic.APIConnectionError,
+        anthropic.RateLimitError,
+        TimeoutError,
+        ConnectionError,
+    ) as exc:
+        # Firewalled environment or rate-limited: fail over immediately (no
+        # retries) to Tesseract.
         logger.warning("Claude Vision unavailable (%s); falling back to Tesseract.", type(exc).__name__)
         return _extract_with_tesseract(image_bytes)
 
