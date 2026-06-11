@@ -13,6 +13,7 @@ from app.models import (
 from app.stubs import build_stub_result
 from app.validation import decode_base64_image, validate_image_bytes, validate_upload
 from batch import store
+from batch.csv_input import parse_application_csv
 from ocr.quality import assess_image_quality
 
 router = APIRouter(tags=["verification"])
@@ -58,19 +59,30 @@ def verify(payload: VerifyRequest, http_request: Request) -> VerificationResult:
     responses={
         413: {"description": "An image exceeds the maximum size"},
         415: {"description": "A submitted file is not an image"},
+        422: {"description": "application_csv is missing columns, has the wrong row count, or an invalid value"},
     },
 )
 async def verify_batch(
     images: list[UploadFile] = File(..., description="Label image files"),
     application_csv: UploadFile = File(..., description="CSV of application data, one row per image"),
 ) -> BatchSubmitResponse:
-    """Validate the uploaded files and register a batch job.
+    """Validate the uploads, parse the CSV, and register a batch job.
 
-    Actual parallel processing is implemented by the orchestrator in ISSUE 3.1;
-    here we only validate inputs and hand back a job_id to poll.
+    Processing is driven by the client opening
+    `GET /jobs/{job_id}/stream` (ISSUE 3.2); this endpoint only validates
+    inputs and hands back a job_id.
     """
     for image in images:
         validate_upload(image.content_type, image.size, image.filename)
-    # application_csv is accepted and parsed by the orchestrator in Phase 3.
+
+    csv_bytes = await application_csv.read()
+    application_rows = parse_application_csv(csv_bytes, expected_rows=len(images))
+
     job = store.create_job(total=len(images))
+    labels: list[store.LabelInput] = []
+    for image, app_data in zip(images, application_rows):
+        image_bytes = await image.read()
+        labels.append(store.LabelInput(image_bytes=image_bytes, application_data=app_data, filename=image.filename))
+    job.labels = labels
+
     return BatchSubmitResponse(job_id=job.job_id, state=job.state, total=job.total)

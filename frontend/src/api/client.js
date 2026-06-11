@@ -39,4 +39,10 @@ export function verify(image, applicationData) {
   });
 }
 
+// URL for the batch progress stream (ISSUE 3.2). Returned as a string,
+// rather than fetched here, since EventSource opens its own connection.
+export function jobStreamUrl(jobId) {
+  return `${API_URL}/jobs/${encodeURIComponent(jobId)}/stream`;
+}
+
 export { API_URL };
