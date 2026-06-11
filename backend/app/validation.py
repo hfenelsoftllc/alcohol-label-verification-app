@@ -16,6 +16,10 @@ from fastapi import HTTPException, status
 #: Maximum accepted image size. Configurable via MAX_IMAGE_MB (default 20 MB).
 MAX_IMAGE_BYTES: int = int(os.getenv("MAX_IMAGE_MB", "20")) * 1024 * 1024
 
+#: Maximum total image size for a single /verify/batch request. Configurable
+#: via MAX_BATCH_MB (default 500 MB).
+MAX_BATCH_BYTES: int = int(os.getenv("MAX_BATCH_MB", "500")) * 1024 * 1024
+
 #: Leading magic-byte signatures for the image formats we accept.
 _IMAGE_SIGNATURES: tuple[bytes, ...] = (
     b"\xff\xd8\xff",            # JPEG
@@ -60,6 +64,15 @@ def validate_image_bytes(data: bytes) -> None:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"image exceeds the maximum size of {MAX_IMAGE_BYTES} bytes",
+        )
+
+
+def validate_batch_size(total_bytes: int) -> None:
+    """Reject a batch whose cumulative image size exceeds MAX_BATCH_BYTES (413)."""
+    if total_bytes > MAX_BATCH_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"batch exceeds the maximum total size of {MAX_BATCH_BYTES} bytes",
         )
 
 

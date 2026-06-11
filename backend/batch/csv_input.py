@@ -36,6 +36,13 @@ def parse_application_csv(data: bytes, expected_rows: int) -> list[ApplicationDa
             detail=f"application_csv is missing required column(s): {', '.join(missing)}",
         )
 
+    unknown = [name for name in fieldnames if name not in LABEL_FIELD_NAMES]
+    if unknown:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"application_csv has unrecognized column(s): {', '.join(unknown)}",
+        )
+
     rows = list(reader)
     if len(rows) != expected_rows:
         raise HTTPException(

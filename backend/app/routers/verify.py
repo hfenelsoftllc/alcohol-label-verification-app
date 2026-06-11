@@ -11,7 +11,7 @@ from app.models import (
     VerifyRequest,
 )
 from app.stubs import build_stub_result
-from app.validation import decode_base64_image, validate_image_bytes, validate_upload
+from app.validation import decode_base64_image, validate_batch_size, validate_image_bytes, validate_upload
 from batch import store
 from batch.csv_input import parse_application_csv
 from ocr.quality import assess_image_quality
@@ -72,17 +72,23 @@ async def verify_batch(
     `GET /jobs/{job_id}/stream` (ISSUE 3.2); this endpoint only validates
     inputs and hands back a job_id.
     """
+    images_bytes: list[bytes] = []
+    total_bytes = 0
     for image in images:
         validate_upload(image.content_type, image.size, image.filename)
+        image_bytes = await image.read()
+        validate_image_bytes(image_bytes)
+        total_bytes += len(image_bytes)
+        validate_batch_size(total_bytes)
+        images_bytes.append(image_bytes)
 
     csv_bytes = await application_csv.read()
     application_rows = parse_application_csv(csv_bytes, expected_rows=len(images))
 
     job = store.create_job(total=len(images))
-    labels: list[store.LabelInput] = []
-    for image, app_data in zip(images, application_rows):
-        image_bytes = await image.read()
-        labels.append(store.LabelInput(image_bytes=image_bytes, application_data=app_data, filename=image.filename))
-    job.labels = labels
+    job.labels = [
+        store.LabelInput(image_bytes=image_bytes, application_data=app_data, filename=image.filename)
+        for image, image_bytes, app_data in zip(images, images_bytes, application_rows, strict=True)
+    ]
 
     return BatchSubmitResponse(job_id=job.job_id, state=job.state, total=job.total)
