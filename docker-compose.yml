@@ -18,6 +18,7 @@ services:
       OCR_MODE: ${OCR_MODE:-auto}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-4}
+      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:-}
       REDIS_URL: ${REDIS_URL:-}
     ports:
       - "${BACKEND_PORT:-8000}:8000"

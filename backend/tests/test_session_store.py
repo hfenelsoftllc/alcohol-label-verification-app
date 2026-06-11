@@ -30,7 +30,7 @@ def test_create_job_sets_created_and_last_accessed():
     store.clear()
     before = datetime.now(timezone.utc)
 
-    job = store.create_job(total=3)
+    job = store.create_job(total=3, session_id="test-session")
 
     assert before <= job.created_at <= datetime.now(timezone.utc)
     assert abs((job.last_accessed - job.created_at).total_seconds()) < 1
@@ -39,7 +39,7 @@ def test_create_job_sets_created_and_last_accessed():
 
 def test_get_job_refreshes_last_accessed():
     store.clear()
-    job = store.create_job(total=1)
+    job = store.create_job(total=1, session_id="test-session")
     job.last_accessed = datetime.now(timezone.utc) - timedelta(seconds=1)
     stale = job.last_accessed
 
@@ -51,7 +51,7 @@ def test_get_job_refreshes_last_accessed():
 
 def test_job_within_ttl_is_not_reaped():
     store.clear()
-    job = store.create_job(total=1)
+    job = store.create_job(total=1, session_id="test-session")
     job.last_accessed = datetime.now(timezone.utc) - timedelta(seconds=store.SESSION_TTL_SECONDS - 1)
 
     assert store.get_job(job.job_id) is not None
@@ -59,7 +59,7 @@ def test_job_within_ttl_is_not_reaped():
 
 def test_get_job_reaps_expired_session_and_logs(capsys):
     store.clear()
-    job = store.create_job(total=1)
+    job = store.create_job(total=1, session_id="test-session")
     job.last_accessed = datetime.now(timezone.utc) - timedelta(seconds=store.SESSION_TTL_SECONDS + 1)
 
     assert store.get_job(job.job_id) is None
@@ -70,10 +70,10 @@ def test_get_job_reaps_expired_session_and_logs(capsys):
 
 def test_create_job_sweeps_expired_sessions(capsys):
     store.clear()
-    stale = store.create_job(total=1)
+    stale = store.create_job(total=1, session_id="test-session")
     stale.last_accessed = datetime.now(timezone.utc) - timedelta(seconds=store.SESSION_TTL_SECONDS + 1)
 
-    fresh = store.create_job(total=1)
+    fresh = store.create_job(total=1, session_id="test-session")
 
     assert store.get_job(stale.job_id) is None
     assert store.get_job(fresh.job_id) is not None

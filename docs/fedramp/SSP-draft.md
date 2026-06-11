@@ -205,7 +205,7 @@ remaining gaps in `POAM.md`.
 
 | Control | Name | Status | Implementation Notes |
 |---|---|---|---|
-| AC-3 | Access Enforcement | **Planned** (Phase 3, ISSUE 3.7) | Session-token authentication and per-session results isolation are not yet implemented. Currently there is no authentication layer — tracked as a gap for `POAM.md`. |
+| AC-3 | Access Enforcement | **Implemented** (ISSUE 3.7) | Every `/jobs/*` request requires a valid signed session cookie (403 otherwise); each batch job is scoped to the session that created it (404 for any other session). See [`SESSION-MANAGEMENT.md`](./SESSION-MANAGEMENT.md). |
 | AC-4 | Information Flow Enforcement | **Implemented** | All processing is in-memory within the authorization boundary (§4); the only cross-boundary flow is the single whitelisted Claude Vision endpoint (§7), gated by `OCR_MODE`. |
 | AC-17 | Remote Access | **Implemented / Inherited** | The frontend is reachable only over HTTPS; `/api/*` is same-origin via the nginx reverse proxy (no CORS). TLS termination at the network ingress is inherited from the hosting GSS. |
 
@@ -230,14 +230,14 @@ remaining gaps in `POAM.md`.
 
 | Control | Name | Status | Implementation Notes |
 |---|---|---|---|
-| IA-2 | Identification and Authentication | **Planned** (Phase 3, ISSUE 3.7) | The PoC currently has no user identity or authentication layer; session-token authentication is scoped for ISSUE 3.7. Tracked as a gap for `POAM.md` until then. |
+| IA-2 | Identification and Authentication | **Implemented** (ISSUE 3.7) | Each browser is identified by a cryptographically random session id (`secrets.token_urlsafe(32)`), issued on first visit and validated on every request via an HMAC-SHA256-signed cookie. See [`SESSION-MANAGEMENT.md`](./SESSION-MANAGEMENT.md). |
 
 ### SC — System and Communications Protection
 
 | Control | Name | Status | Implementation Notes |
 |---|---|---|---|
 | SC-8 | Transmission Confidentiality and Integrity | **Implemented** | The `anthropic` SDK uses HTTPS (TLS 1.2+) for the Claude Vision call (§7); reviewer-facing HTTPS and ingress TLS termination are inherited from the hosting GSS. |
-| SC-23 | Session Authenticity | **Planned** (Phase 3, ISSUE 3.7) | HttpOnly/Secure/SameSite session cookies are scoped for ISSUE 3.7, alongside IA-2. |
+| SC-23 | Session Authenticity | **Implemented** (ISSUE 3.7) | The session-id cookie is HttpOnly, Secure, SameSite=Strict, HMAC-SHA256-signed, and expires (`Max-Age`) in lockstep with the server-side session TTL. See [`SESSION-MANAGEMENT.md`](./SESSION-MANAGEMENT.md). |
 | SC-28 | Protection of Information at Rest | **Implemented** | No disk writes of label images, application data, extracted fields, or match results anywhere in `backend/app`/`backend/ocr`/`backend/matching` — confirmed by code review; all state lives in `backend/app/jobstore.py`'s in-memory dict. |
 
 ### SI — System and Information Integrity

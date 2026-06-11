@@ -67,7 +67,7 @@ def test_start_batch_processes_all_labels_in_order(monkeypatch):
     app_data = _application_data()
     monkeypatch.setattr(orchestrator, "extract_fields", lambda image_bytes: _matching_extracted_fields(app_data))
 
-    job = store.create_job(total=3)
+    job = store.create_job(total=3, session_id="test-session")
     labels = [
         LabelInput(image_bytes=PNG_1X1, application_data=app_data, filename=f"label_{i}.png") for i in range(3)
     ]
@@ -104,7 +104,7 @@ def test_concurrency_limit_respected(monkeypatch):
 
     monkeypatch.setattr(orchestrator, "extract_fields", fake_extract_fields)
 
-    job = store.create_job(total=6)
+    job = store.create_job(total=6, session_id="test-session")
     labels = [LabelInput(image_bytes=PNG_1X1, application_data=app_data) for _ in range(6)]
 
     _run_batch(job.job_id, labels)
@@ -118,7 +118,7 @@ def test_malformed_image_produces_error_without_aborting_batch(monkeypatch):
     app_data = _application_data()
     monkeypatch.setattr(orchestrator, "extract_fields", lambda image_bytes: _matching_extracted_fields(app_data))
 
-    job = store.create_job(total=3)
+    job = store.create_job(total=3, session_id="test-session")
     labels = [
         LabelInput(image_bytes=PNG_1X1, application_data=app_data, filename="good_1.png"),
         LabelInput(image_bytes=b"not an image", application_data=app_data, filename="bad.png"),
@@ -157,7 +157,7 @@ def test_load_300_labels_under_5s_average_no_crashes(monkeypatch):
     monkeypatch.setattr(orchestrator, "extract_fields", lambda image_bytes: _matching_extracted_fields(app_data))
 
     total = 300
-    job = store.create_job(total=total)
+    job = store.create_job(total=total, session_id="test-session")
     labels = [
         LabelInput(image_bytes=PNG_1X1, application_data=app_data, filename=f"label_{i}.png")
         for i in range(total)

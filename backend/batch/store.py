@@ -35,6 +35,9 @@ class LabelInput:
 @dataclass
 class Job:
     job_id: str
+    #: Auth session that created this job (ISSUE 3.7) — `/jobs/*` routes
+    #: only serve a job to the session that owns it.
+    session_id: str
     total: int
     state: JobState = JobState.PENDING
     completed: int = 0
@@ -62,9 +65,9 @@ def _reap_expired() -> None:
         log_session_expired(session_id=job_id)
 
 
-def create_job(total: int) -> Job:
+def create_job(total: int, session_id: str) -> Job:
     _reap_expired()
-    job = Job(job_id=secrets.token_urlsafe(12), total=total)
+    job = Job(job_id=secrets.token_urlsafe(12), session_id=session_id, total=total)
     _JOBS[job.job_id] = job
     return job
 
