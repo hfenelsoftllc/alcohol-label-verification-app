@@ -246,9 +246,10 @@ remaining gaps in `POAM.md`.
 |---|---|---|---|
 | SI-3 | Malicious Code Protection | **Implemented** (ISSUE 2.6) | Bandit (Python SAST) and Trivy (container image scanning, CRITICAL gate) run on every PR; results in `docs/fedramp/SAST-RESULTS.md`. |
 | SI-7 | Software, Firmware, and Information Integrity | **Implemented** (ISSUE 2.5) | `backend/matching/exact_validator.py` performs a word-for-word, ALL-CAPS-prefix exact match of the Government Warning text against the application data. |
-| SI-10 | Information Input Validation | **Implemented** | All API I/O is typed via Pydantic models (`backend/app/models.py` — no untyped dicts cross the API boundary); image payloads are validated by magic-byte signature and size (`backend/app/validation.py`, HTTP 413/415). |
+| SI-10 | Information Input Validation | **Implemented** (ISSUE 3.6) | All API I/O is typed via Pydantic models (`backend/app/models.py` — no untyped dicts cross the API boundary, `ApplicationData` strips whitespace via `str_strip_whitespace=True` and enforces per-field `max_length`); both `/verify` and `/verify/batch` validate every image by magic-byte signature and size, not declared Content-Type (`backend/app/validation.py`, HTTP 413/415); `application_csv` rejects missing or unrecognized column names (`backend/batch/csv_input.py`, HTTP 422); a 20+ case fuzz suite (`backend/tests/test_input_validation.py`) confirms malformed input never produces a 5xx. |
 | SI-11 | Error Handling | **Implemented** | A uniform `ErrorResponse{error, message, request_id}` envelope is returned for all HTTP and validation errors (`backend/app/main.py`), and every error response also emits a `request_error` audit event (§AU-3). |
 | SI-12 | Information Management and Retention | **Planned** (Phase 3, ISSUE 3.5) | `SESSION_TTL_HOURS` (default 4h) is already a defined configuration setting (`.env.example`, `docker-compose.yml`) and `audit.log_session_expired()` is implemented and tested; the TTL **reaper** that calls it from `jobstore` is scoped for ISSUE 3.5. |
+| SI-16 | Memory Protection | **Implemented** (ISSUE 3.6) | Per-image (`MAX_IMAGE_MB`, default 20MB) and per-batch (`MAX_BATCH_MB`, default 500MB) size limits are enforced before any image is processed (`backend/app/validation.py`, HTTP 413), bounding worker memory regardless of client-supplied input. |
 
 ---
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # --- The six TTB-required label fields (+ the Government Warning). -----------
 #: Canonical field keys used throughout extraction, matching, and export.
@@ -59,6 +59,8 @@ class JobState(str, Enum):
 
 class ApplicationData(BaseModel):
     """The values submitted in the COLA application (the expected truth)."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
 
     brand: str = Field(..., max_length=255, description="Brand name")
     class_type: str = Field(..., max_length=255, description="Class/type designation")

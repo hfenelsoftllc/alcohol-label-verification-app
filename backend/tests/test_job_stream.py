@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 
-from app.models import ExtractedFields, OcrEngine, OverallStatus
+from app.models import ApplicationData, ExtractedFields, OcrEngine, OverallStatus
 from batch import orchestrator, store
 from tests.conftest import PNG_1X1
-from tests.test_jobs import VALID_APPLICATION_ROW, _submit_batch, application_csv
+from tests.test_jobs import VALID_APPLICATION_ROW, _submit_batch
 
 
 def _matching_extracted_fields() -> ExtractedFields:
@@ -56,18 +56,19 @@ def test_stream_emits_progress_then_complete(client, monkeypatch):
 
 
 def test_stream_emits_error_event_for_failed_label(client, monkeypatch):
+    """The orchestrator's per-label validate_image_bytes guard is defense in
+    depth alongside the /verify/batch upload check (ISSUE 3.6): a corrupt
+    label is reported as an `error` SSE event without aborting the batch."""
     monkeypatch.setattr(orchestrator, "extract_fields", lambda image_bytes: _matching_extracted_fields())
 
-    files = [
-        ("images", ("good.png", PNG_1X1, "image/png")),
-        # Declared as image/png so validate_upload passes; the bytes are not
-        # a real image, so _process_label reports it as an ERROR result.
-        ("images", ("bad.png", b"not an image", "image/png")),
+    app_data = ApplicationData(**VALID_APPLICATION_ROW)
+    job = store.create_job(total=2)
+    job.labels = [
+        store.LabelInput(image_bytes=PNG_1X1, application_data=app_data, filename="good.png"),
+        store.LabelInput(image_bytes=b"not an image", application_data=app_data, filename="bad.png"),
     ]
-    files.append(("application_csv", ("data.csv", application_csv(2), "text/csv")))
-    job_id = client.post("/verify/batch", files=files).json()["job_id"]
 
-    events = _parse_sse(client.get(f"/jobs/{job_id}/stream").text)
+    events = _parse_sse(client.get(f"/jobs/{job.job_id}/stream").text)
 
     by_event = [event for event, _ in events]
     assert by_event.count("error") == 1
