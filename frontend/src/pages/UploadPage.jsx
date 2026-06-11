@@ -136,7 +136,7 @@ export default function UploadPage() {
                 <div className="space-y-3">
                   <img
                     src={image.dataUrl}
-                    alt=""
+                    alt={`Preview of uploaded label image: ${image.name}`}
                     className="mx-auto max-h-48 rounded-lg border border-slate-200 object-contain shadow-sm"
                   />
                   <p className="font-medium text-ink">{image.name}</p>

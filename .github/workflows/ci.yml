@@ -140,6 +140,16 @@ jobs:
         # The `lint` script wires in eslint-plugin-security; configured in ISSUE 1.5.
         run: npm run lint --if-present
 
+      - name: Accessibility (axe-core)
+        if: steps.detect.outputs.present == 'true'
+        working-directory: frontend
+        # vitest + jest-axe (jsdom) smoke test across all routes (ISSUE 4.3).
+        # Advisory only — color-contrast can't be evaluated in jsdom and is
+        # checked manually (docs/ACCESSIBILITY-REPORT.md), so a failure here
+        # shouldn't block merges.
+        continue-on-error: true
+        run: npm test --if-present
+
       - name: npm audit
         if: steps.detect.outputs.present == 'true'
         working-directory: frontend

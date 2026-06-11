@@ -196,8 +196,9 @@ explicitly **not** integrated in this PoC (per ADR-001 constraints).
 ## 8. Minimum Security Controls — Implementation Summary
 
 The table below maps the control families called out in ISSUE 1.6 (**AC, AU, CM, IA, SC, SI**),
-plus **CP** (added by ISSUE 4.2's load-testing control mapping), to their implementation
-status as of this draft. It is a subset of the full
+plus **CP** (added by ISSUE 4.2's load-testing control mapping) and **PL** (added by ISSUE
+4.3's accessibility audit), to their implementation status as of this draft. It is a subset
+of the full
 [FedRAMP Control Coverage Matrix](../../project-management/PROJECT-PLAN.md#fedramp-control-coverage-matrix)
 in the project plan; `SSP-final.md` (ISSUE 4.5) will carry the complete matrix plus any
 remaining gaps in `POAM.md`.
@@ -258,6 +259,12 @@ remaining gaps in `POAM.md`.
 | Control | Name | Status | Implementation Notes |
 |---|---|---|---|
 | CP-10 | System Recovery and Reconstitution | **Implemented** (ISSUE 4.2) | The 300-label load test ([`LOAD-TEST-RESULTS.md`](../LOAD-TEST-RESULTS.md)) demonstrated that when the cloud OCR provider (Claude Vision) becomes unavailable mid-batch (e.g., its rate limit is exceeded), `backend/ocr/adapter.py::extract_fields` automatically and immediately fails over to local Tesseract OCR for the affected labels — the batch completes with zero crashes and no operator intervention. |
+
+### PL — Planning
+
+| Control | Name | Status | Implementation Notes |
+|---|---|---|---|
+| PL-8 | Security and Privacy Architectures | **Implemented** (ISSUE 4.3) | The frontend meets WCAG 2.1 AA: an automated `axe-core` scan (vitest + jest-axe, `frontend/src/__tests__/accessibility.test.jsx`) finds zero violations across all 3 routes, and a manual keyboard-navigation + accessibility-tree pass confirmed a logical tab order, visible 3px focus indicators, correct landmark/heading/label structure, and `aria-live` error/status announcements. One gap (some secondary text below the 14px target) is documented as an accepted exception. See [`ACCESSIBILITY-REPORT.md`](../ACCESSIBILITY-REPORT.md). |
 
 ---
 
