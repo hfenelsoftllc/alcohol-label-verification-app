@@ -29,6 +29,7 @@ from batch.store import LabelInput
 from matching import engine
 from matching.exact_validator import validate_government_warning
 from ocr.adapter import extract_fields
+from ocr.preprocessor import maybe_preprocess
 from ocr.quality import assess_image_quality
 
 #: Default number of labels processed concurrently; override via BATCH_MAX_WORKERS.
@@ -90,7 +91,13 @@ async def start_batch(job_id: str, label_pairs: Iterable[LabelInput]) -> AsyncIt
 
 
 def _process_label(label: LabelInput) -> VerificationResult:
-    """Run one label through OCR, matching, and Government Warning checks.
+    """Run one label through pre-processing, OCR, matching, and Government
+    Warning checks.
+
+    Pre-processing (ISSUE 4.1) runs on a copy of the image and is skipped
+    when the image already scores above
+    `ocr.preprocessor.SKIP_QUALITY_THRESHOLD`; either way, `image_quality`
+    reflects the original upload, not the (possibly preprocessed) OCR input.
 
     Any failure (e.g. an undecodable image) is reported as an ERROR result
     for this label rather than raised, so it cannot abort the whole batch
@@ -99,7 +106,8 @@ def _process_label(label: LabelInput) -> VerificationResult:
     try:
         validate_image_bytes(label.image_bytes)
         image_quality = assess_image_quality(label.image_bytes)
-        extracted = extract_fields(label.image_bytes)
+        ocr_input = maybe_preprocess(label.image_bytes, image_quality.score)
+        extracted = extract_fields(ocr_input)
     except Exception as exc:
         return _error_result(label, str(exc))
 

@@ -65,7 +65,7 @@ def assess_image_quality(image_bytes: bytes) -> ImageQualityReport:
     checked it has a recognized image signature) degrades to score 0 with the
     "unreadable" issue rather than being rejected here.
     """
-    image = _decode(image_bytes)
+    image = decode_image(image_bytes)
     if image is None or image.size == 0:
         return ImageQualityReport(score=0.0, issues=["unreadable"])
 
@@ -110,7 +110,7 @@ def assess_image_quality(image_bytes: bytes) -> ImageQualityReport:
     return ImageQualityReport(score=max(0.0, min(100.0, score)), issues=issues)
 
 
-def _decode(image_bytes: bytes) -> np.ndarray | None:
+def decode_image(image_bytes: bytes) -> np.ndarray | None:
     array = np.frombuffer(image_bytes, dtype=np.uint8)
     image = cv2.imdecode(array, cv2.IMREAD_COLOR)
     if image is not None:
