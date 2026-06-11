@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 
 import { jobStreamUrl } from '../api/client.js';
 
-// Number of most-recently-completed results kept for the live feed.
-const MAX_RECENT_RESULTS = 5;
+// Number of most-recently-completed results kept for the live feed
+// (ISSUE 3.4 AC: "most recent 10 completed labels").
+const MAX_RECENT_RESULTS = 10;
 
 // Streams batch progress for `jobId` over Server-Sent Events (ISSUE 3.2,
 // FedRAMP SC-8). The browser's EventSource reconnects automatically if the
