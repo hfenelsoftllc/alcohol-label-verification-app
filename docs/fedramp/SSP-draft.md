@@ -195,8 +195,9 @@ explicitly **not** integrated in this PoC (per ADR-001 constraints).
 
 ## 8. Minimum Security Controls — Implementation Summary
 
-The table below maps the control families called out in ISSUE 1.6 (**AC, AU, CM, IA, SC, SI**)
-to their implementation status as of this draft. It is a subset of the full
+The table below maps the control families called out in ISSUE 1.6 (**AC, AU, CM, IA, SC, SI**),
+plus **CP** (added by ISSUE 4.2's load-testing control mapping), to their implementation
+status as of this draft. It is a subset of the full
 [FedRAMP Control Coverage Matrix](../../project-management/PROJECT-PLAN.md#fedramp-control-coverage-matrix)
 in the project plan; `SSP-final.md` (ISSUE 4.5) will carry the complete matrix plus any
 remaining gaps in `POAM.md`.
@@ -216,6 +217,7 @@ remaining gaps in `POAM.md`.
 | AU-2 | Event Logging | **Implemented** (ISSUE 2.7) | `backend/app/audit.py` configures `structlog` to emit one JSON object per line. Logged events: `request_received`, `request_completed`, `ocr_started`, `ocr_completed`, `match_completed`, `request_error`, and `session_expired` (helper ready for ISSUE 3.5). |
 | AU-3 | Content of Audit Records | **Implemented** | `request_completed` records `timestamp`, `request_id`, `endpoint`, `method`, `status_code`, `duration_ms`, `session_id`, and `ocr_engine_used`. `request_error` records `status_code`, `error`, and `message`. |
 | AU-9 | Protection of Audit Information | **Implemented** | Logs go to **stdout only** (`structlog.PrintLoggerFactory`) — never to a file inside the container — so the platform's log collector owns retention/rotation. Helper-function signatures structurally exclude PII (§6). |
+| AU-14 | Session Audit | **Implemented** (ISSUE 4.2) | The 300-label load test ([`LOAD-TEST-RESULTS.md`](../LOAD-TEST-RESULTS.md)) drives one batch end-to-end through the same session-cookie flow used by the browser (ISSUE 3.7), confirming the `request_completed`/`ocr_completed` audit events (§AU-3) are emitted correctly for every label under realistic batch load, with no impact on session validity. |
 
 ### CM — Configuration Management
 
@@ -250,6 +252,12 @@ remaining gaps in `POAM.md`.
 | SI-11 | Error Handling | **Implemented** | A uniform `ErrorResponse{error, message, request_id}` envelope is returned for all HTTP and validation errors (`backend/app/main.py`), and every error response also emits a `request_error` audit event (§AU-3). |
 | SI-12 | Information Management and Retention | **Planned** (Phase 3, ISSUE 3.5) | `SESSION_TTL_HOURS` (default 4h) is already a defined configuration setting (`.env.example`, `docker-compose.yml`) and `audit.log_session_expired()` is implemented and tested; the TTL **reaper** that calls it from `jobstore` is scoped for ISSUE 3.5. |
 | SI-16 | Memory Protection | **Implemented** (ISSUE 3.6) | Per-image (`MAX_IMAGE_MB`, default 20MB) and per-batch (`MAX_BATCH_MB`, default 500MB) size limits are enforced before any image is processed (`backend/app/validation.py`, HTTP 413), bounding worker memory regardless of client-supplied input. |
+
+### CP — Contingency Planning
+
+| Control | Name | Status | Implementation Notes |
+|---|---|---|---|
+| CP-10 | System Recovery and Reconstitution | **Implemented** (ISSUE 4.2) | The 300-label load test ([`LOAD-TEST-RESULTS.md`](../LOAD-TEST-RESULTS.md)) demonstrated that when the cloud OCR provider (Claude Vision) becomes unavailable mid-batch (e.g., its rate limit is exceeded), `backend/ocr/adapter.py::extract_fields` automatically and immediately fails over to local Tesseract OCR for the affected labels — the batch completes with zero crashes and no operator intervention. |
 
 ---
 

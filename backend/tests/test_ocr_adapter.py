@@ -1,5 +1,7 @@
 """Tests for the OCR adapter (Claude Vision + Tesseract fallback)."""
 
+import anthropic
+import httpx
 import pytest
 
 from app.models import OcrEngine
@@ -65,6 +67,29 @@ def test_timeout_falls_back_to_tesseract(monkeypatch):
         raise TimeoutError("vision API timed out")
 
     monkeypatch.setattr(adapter.anthropic, "Anthropic", _fake_anthropic(_raise_timeout))
+    monkeypatch.setattr(
+        adapter.pytesseract,
+        "image_to_string",
+        lambda _image: "BRAND 40% Alc. by Vol. 750 mL\nGOVERNMENT WARNING: ...",
+    )
+
+    result = adapter.extract_fields(PNG_1X1)
+
+    assert result.ocr_engine_used == OcrEngine.TESSERACT
+    assert result.abv == "40% Alc. by Vol."
+    assert result.government_warning.startswith("GOVERNMENT WARNING")
+
+
+def test_rate_limit_falls_back_to_tesseract(monkeypatch):
+    monkeypatch.setattr(adapter, "OCR_MODE", "auto")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    def _raise_rate_limit(_):
+        request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+        response = httpx.Response(429, request=request)
+        raise anthropic.RateLimitError("rate limit exceeded", response=response, body=None)
+
+    monkeypatch.setattr(adapter.anthropic, "Anthropic", _fake_anthropic(_raise_rate_limit))
     monkeypatch.setattr(
         adapter.pytesseract,
         "image_to_string",
