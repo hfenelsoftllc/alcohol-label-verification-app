@@ -7,9 +7,13 @@ import csv
 import io
 import json
 from collections.abc import AsyncIterator
+from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
 
 from app.models import (
     LABEL_FIELD_NAMES,
@@ -28,6 +32,52 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 #: How often a reconnecting SSE client polls for newly-completed labels.
 _POLL_INTERVAL_SECONDS = 0.1
+
+#: The six TTB-required comparison fields, excluding "government_warning"
+#: (which has its own valid/invalid status rather than a MatchStatus).
+_COMPARISON_FIELDS = LABEL_FIELD_NAMES[:-1]
+
+#: Per-label export columns (ISSUE 3.5): filename and overall outcome, then
+#: extracted/expected/status/confidence for each comparison field, then the
+#: Government Warning's extracted/expected text and valid/invalid status.
+EXPORT_HEADER: list[str] = [
+    "filename",
+    "overall_status",
+    "confidence_score",
+    "image_quality_score",
+    *(
+        column
+        for name in _COMPARISON_FIELDS
+        for column in (f"{name}_extracted", f"{name}_expected", f"{name}_status", f"{name}_confidence")
+    ),
+    "government_warning_extracted",
+    "government_warning_expected",
+    "government_warning_status",
+]
+
+#: Columns whose values are status strings, eligible for color-coding in the
+#: .xlsx export (MatchStatus / OverallStatus / "valid" / "invalid").
+_STATUS_COLUMNS = frozenset(
+    ["overall_status", *(f"{name}_status" for name in _COMPARISON_FIELDS), "government_warning_status"]
+)
+
+#: Excel's standard "Good"/"Neutral"/"Bad" conditional-formatting palette
+#: (fill, font), keyed by the status value it applies to.
+_STATUS_FILLS: dict[str, tuple[str, str]] = {
+    "MATCH": ("FFC6EFCE", "FF006100"),
+    "PARTIAL_MATCH": ("FFFFEB9C", "FF9C6500"),
+    "PARTIAL": ("FFFFEB9C", "FF9C6500"),
+    "NO_MATCH": ("FFFFC7CE", "FF9C0006"),
+    "FAIL": ("FFFFC7CE", "FF9C0006"),
+    "ERROR": ("FFFFC7CE", "FF9C0006"),
+    "valid": ("FFC6EFCE", "FF006100"),
+    "invalid": ("FFFFC7CE", "FF9C0006"),
+}
+
+#: Header row styling for the .xlsx export — white text on the Treasury
+#: brand color (treasury-700, see frontend/src/index.css).
+_HEADER_FILL = PatternFill("solid", fgColor="FF0B5D44")
+_HEADER_FONT = Font(bold=True, color="FFFFFFFF")
 
 
 def _require_job(job_id: str) -> store.Job:
@@ -81,38 +131,94 @@ def job_results(job_id: str) -> JobResultsResponse:
     )
 
 
-@router.get(
-    "/{job_id}/export",
-    summary="Export batch results as CSV",
-    responses={200: {"content": {"text/csv": {}}, "description": "RFC 4180 CSV"}},
-)
-def job_export(job_id: str) -> Response:
-    job = _require_job(job_id)
+def _export_row(result: VerificationResult) -> list[str]:
+    """Build one export row, in `EXPORT_HEADER` order, from a single result."""
+    by_field = {fc.field: fc for fc in result.fields}
+    row: list[str] = [
+        result.filename or "",
+        result.overall_status.value,
+        f"{result.confidence_score:.1f}",
+        f"{result.image_quality_score:.1f}",
+    ]
+    for name in _COMPARISON_FIELDS:
+        fc = by_field.get(name)
+        if fc is None:
+            row += ["", "", "", ""]
+        else:
+            row += [fc.extracted or "", fc.expected or "", fc.status.value, f"{fc.score:.1f}"]
+    warning = result.government_warning
+    row += [
+        warning.extracted_text or "",
+        warning.expected_text or "",
+        "valid" if warning.valid else "invalid",
+    ]
+    return row
 
+
+def _export_csv(job: store.Job) -> Response:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    header = ["filename", "overall_status", "confidence_score", *LABEL_FIELD_NAMES]
-    writer.writerow(header)
+    writer.writerow(EXPORT_HEADER)
     for result in _completed_results(job):
-        by_field = {fc.field: fc for fc in result.fields}
-        row = [
-            result.filename or "",
-            result.overall_status.value,
-            f"{result.confidence_score:.1f}",
-        ]
-        for name in LABEL_FIELD_NAMES:
-            if name == "government_warning":
-                row.append("valid" if result.government_warning.valid else "invalid")
-            else:
-                fc = by_field.get(name)
-                row.append(fc.status.value if fc else "")
-        writer.writerow(row)
-
+        writer.writerow(_export_row(result))
     return Response(
         content=buffer.getvalue(),
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="results_{job_id}.csv"'},
+        headers={"Content-Disposition": f'attachment; filename="results_{job.job_id}.csv"'},
     )
+
+
+def _column_width(name: str) -> int:
+    if name == "overall_status" or name.endswith(("_status", "_confidence", "_score")):
+        return 14
+    return 28
+
+
+def _export_xlsx(job: store.Job) -> Response:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Results"
+
+    for col, name in enumerate(EXPORT_HEADER, start=1):
+        cell = sheet.cell(row=1, column=col, value=name)
+        cell.fill = _HEADER_FILL
+        cell.font = _HEADER_FONT
+        sheet.column_dimensions[get_column_letter(col)].width = _column_width(name)
+    sheet.freeze_panes = "A2"
+
+    for row_index, result in enumerate(_completed_results(job), start=2):
+        for col, (name, value) in enumerate(zip(EXPORT_HEADER, _export_row(result), strict=True), start=1):
+            cell = sheet.cell(row=row_index, column=col, value=value)
+            if name in _STATUS_COLUMNS and value in _STATUS_FILLS:
+                fill_color, font_color = _STATUS_FILLS[value]
+                cell.fill = PatternFill("solid", fgColor=fill_color)
+                cell.font = Font(color=font_color)
+
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="results_{job.job_id}.xlsx"'},
+    )
+
+
+@router.get(
+    "/{job_id}/export",
+    summary="Export batch results as CSV or Excel",
+    responses={
+        200: {
+            "content": {
+                "text/csv": {},
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {},
+            },
+            "description": "RFC 4180 CSV (default, `format=csv`) or a formatted .xlsx workbook (`format=xlsx`)",
+        }
+    },
+)
+def job_export(job_id: str, format: Literal["csv", "xlsx"] = Query("csv")) -> Response:
+    job = _require_job(job_id)
+    return _export_xlsx(job) if format == "xlsx" else _export_csv(job)
 
 
 def _sse(event: str, data: dict) -> str:

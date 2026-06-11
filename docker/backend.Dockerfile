@@ -29,10 +29,13 @@ WORKDIR /app
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Application code. `app` is the FastAPI package; `ocr` is the OCR adapter
-# package (sibling top-level packages, both importable from /app on sys.path).
+# Application code. `app` is the FastAPI package; `ocr`, `batch`, and
+# `matching` are sibling top-level packages, all importable from /app on
+# sys.path.
 COPY backend/app ./app
 COPY backend/ocr ./ocr
+COPY backend/batch ./batch
+COPY backend/matching ./matching
 
 USER app
 

@@ -2,8 +2,12 @@
 
 import csv
 import io
+import json
 
-from app.models import LABEL_FIELD_NAMES
+import openpyxl
+
+from app.models import LABEL_FIELD_NAMES, ApplicationData, GovernmentWarningCheck
+from app.stubs import build_stub_result
 from tests.conftest import PNG_1X1
 
 #: A row of application data that satisfies every required ApplicationData field.
@@ -70,7 +74,64 @@ def test_job_status_results_export_roundtrip(client):
     export_resp = client.get(f"/jobs/{job_id}/export")
     assert export_resp.status_code == 200
     assert export_resp.headers["content-type"].startswith("text/csv")
-    assert "filename" in export_resp.text.splitlines()[0]
+    header = export_resp.text.splitlines()[0].split(",")
+    assert header[:4] == ["filename", "overall_status", "confidence_score", "image_quality_score"]
+    for name in ("brand_extracted", "brand_expected", "brand_status", "brand_confidence"):
+        assert name in header
+    assert "government_warning_extracted" in header
+    assert "government_warning_expected" in header
+    assert "government_warning_status" in header
+
+
+def test_job_export_xlsx_format(client):
+    job_id = _submit_batch(client, n_images=1).json()["job_id"]
+    client.get(f"/jobs/{job_id}/stream")  # drive the batch to completion
+
+    resp = client.get(f"/jobs/{job_id}/export?format=xlsx")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert resp.headers["content-disposition"] == f'attachment; filename="results_{job_id}.xlsx"'
+
+    workbook = openpyxl.load_workbook(io.BytesIO(resp.content))
+    sheet = workbook.active
+    header = [cell.value for cell in sheet[1]]
+    assert header[:4] == ["filename", "overall_status", "confidence_score", "image_quality_score"]
+    assert "government_warning_status" in header
+
+    # Header row uses the Treasury brand color with bold white text.
+    header_cell = sheet.cell(row=1, column=1)
+    assert header_cell.fill.fgColor.rgb == "FF0B5D44"
+    assert header_cell.font.bold is True
+
+    # The overall_status cell is colour-coded for its status value.
+    overall_col = header.index("overall_status") + 1
+    status_cell = sheet.cell(row=2, column=overall_col)
+    assert status_cell.fill.fgColor.rgb in ("FFC6EFCE", "FFFFEB9C", "FFFFC7CE")
+
+
+def test_job_export_invalid_format_422(client):
+    job_id = _submit_batch(client, n_images=1).json()["job_id"]
+    resp = client.get(f"/jobs/{job_id}/export?format=pdf")
+    assert resp.status_code == 422
+
+
+def test_label_result_memory_footprint(application_data):
+    """ISSUE 3.5 AC: ~2KB per result / ~600KB for a 300-label batch — a
+    realistic VerificationResult (incl. Government Warning text) serializes
+    to a small, bounded size, well within in-memory limits even for the
+    largest supported batch."""
+    app_data = ApplicationData(**application_data)
+    result = build_stub_result(app_data, filename="label_001.png")
+    result.government_warning = GovernmentWarningCheck(
+        valid=True,
+        extracted_text=app_data.government_warning,
+        expected_text=app_data.government_warning,
+    )
+
+    size = len(json.dumps(result.model_dump(mode="json")))
+
+    assert size < 4096
+    assert size * 300 < 2 * 1024 * 1024
 
 
 def test_unknown_job_404(client):
