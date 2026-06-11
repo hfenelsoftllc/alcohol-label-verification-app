@@ -19,6 +19,10 @@ export const APPLICATION_FORM_FIELDS = [
   { key: 'government_warning', label: GOVERNMENT_WARNING_LABEL, type: 'textarea' },
 ];
 
+// Mirrors LABEL_FIELD_NAMES in backend/app/models.py — the columns required
+// in a batch application_csv (ISSUE 3.4).
+export const LABEL_FIELD_NAMES = APPLICATION_FORM_FIELDS.map((field) => field.key);
+
 // Mirrors the `max_length` constraints on ApplicationData in
 // backend/app/models.py.
 export const FIELD_MAX_LENGTH = {
