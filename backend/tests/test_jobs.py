@@ -5,6 +5,7 @@ import io
 import json
 
 import openpyxl
+import pytest
 
 from app.models import LABEL_FIELD_NAMES, ApplicationData, GovernmentWarningCheck
 from app.stubs import build_stub_result
@@ -113,6 +114,55 @@ def test_job_export_invalid_format_422(client):
     job_id = _submit_batch(client, n_images=1).json()["job_id"]
     resp = client.get(f"/jobs/{job_id}/export?format=pdf")
     assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# CSV/Excel formula injection (CWE-1236) — exported cells beginning with
+# =, +, -, @, tab, or CR must be neutralized with a leading single quote so
+# Excel/LibreOffice/Google Sheets treat them as text, not formulas.
+# ---------------------------------------------------------------------------
+
+FORMULA_INJECTION_PAYLOADS = ["=2+2", "+2+2", "-2+2", "@SUM(A1:A2)"]
+
+
+@pytest.mark.parametrize("payload", FORMULA_INJECTION_PAYLOADS)
+def test_export_neutralizes_formula_injection(client, payload):
+    bad_row = dict(VALID_APPLICATION_ROW, brand=payload)
+    files = [("images", ("label_0.png", PNG_1X1, "image/png"))]
+    files.append(("application_csv", ("data.csv", application_csv(1, row=bad_row), "text/csv")))
+    job_id = client.post("/verify/batch", files=files).json()["job_id"]
+    client.get(f"/jobs/{job_id}/stream")  # drive the batch to completion
+
+    expected_cell = f"'{payload}"
+
+    csv_resp = client.get(f"/jobs/{job_id}/export?format=csv")
+    row = next(csv.DictReader(io.StringIO(csv_resp.text)))
+    assert row["brand_expected"] == expected_cell
+
+    xlsx_resp = client.get(f"/jobs/{job_id}/export?format=xlsx")
+    workbook = openpyxl.load_workbook(io.BytesIO(xlsx_resp.content))
+    sheet = workbook.active
+    header = [cell.value for cell in sheet[1]]
+    expected_col = header.index("brand_expected") + 1
+    assert sheet.cell(row=2, column=expected_col).value == expected_cell
+
+
+def test_export_passes_through_normal_values_unchanged(client):
+    job_id = _submit_batch(client, n_images=1).json()["job_id"]
+    client.get(f"/jobs/{job_id}/stream")  # drive the batch to completion
+
+    brand = VALID_APPLICATION_ROW["brand"]
+
+    csv_resp = client.get(f"/jobs/{job_id}/export?format=csv")
+    row = next(csv.DictReader(io.StringIO(csv_resp.text)))
+    assert row["brand_expected"] == brand
+
+    xlsx_resp = client.get(f"/jobs/{job_id}/export?format=xlsx")
+    workbook = openpyxl.load_workbook(io.BytesIO(xlsx_resp.content))
+    sheet = workbook.active
+    header = [cell.value for cell in sheet[1]]
+    expected_col = header.index("brand_expected") + 1
+    assert sheet.cell(row=2, column=expected_col).value == brand
 
 
 def test_label_result_memory_footprint(application_data):

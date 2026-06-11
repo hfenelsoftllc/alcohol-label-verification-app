@@ -131,6 +131,20 @@ def job_results(job_id: str) -> JobResultsResponse:
     )
 
 
+#: Leading characters that Excel/LibreOffice/Google Sheets treat as the start
+#: of a formula when a CSV/XLSX cell is opened (CWE-1236, "CSV Injection").
+#: Prefixing such a value with a single quote forces the spreadsheet
+#: application to treat it as literal text instead of evaluating it.
+_FORMULA_TRIGGER_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _sanitize_cell(value: str) -> str:
+    """Neutralize CSV/Excel formula injection in an exported cell value."""
+    if value.startswith(_FORMULA_TRIGGER_PREFIXES):
+        return f"'{value}"
+    return value
+
+
 def _export_row(result: VerificationResult) -> list[str]:
     """Build one export row, in `EXPORT_HEADER` order, from a single result."""
     by_field = {fc.field: fc for fc in result.fields}
@@ -152,7 +166,7 @@ def _export_row(result: VerificationResult) -> list[str]:
         warning.expected_text or "",
         "valid" if warning.valid else "invalid",
     ]
-    return row
+    return [_sanitize_cell(value) for value in row]
 
 
 def _export_csv(job: store.Job) -> Response:
