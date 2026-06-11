@@ -7,7 +7,6 @@ import io
 
 from fastapi import APIRouter, HTTPException, Response, status
 
-from app import jobstore
 from app.models import (
     LABEL_FIELD_NAMES,
     BatchSummary,
@@ -15,12 +14,13 @@ from app.models import (
     JobStatusResponse,
     OverallStatus,
 )
+from batch import store
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
-def _require_job(job_id: str) -> jobstore.Job:
-    job = jobstore.get_job(job_id)
+def _require_job(job_id: str) -> store.Job:
+    job = store.get_job(job_id)
     if job is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -29,7 +29,7 @@ def _require_job(job_id: str) -> jobstore.Job:
     return job
 
 
-def _summarize(job: jobstore.Job) -> BatchSummary:
+def _summarize(job: store.Job) -> BatchSummary:
     summary = BatchSummary()
     for result in job.results:
         if result.overall_status is OverallStatus.MATCH:

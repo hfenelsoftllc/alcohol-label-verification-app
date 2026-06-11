@@ -173,6 +173,15 @@ class JobResultsResponse(BaseModel):
     results: list[VerificationResult]
 
 
+class BatchProgress(BaseModel):
+    """Progress event emitted as each label in a batch finishes (ISSUE 3.1)."""
+
+    job_id: str
+    completed: int
+    total: int
+    latest: VerificationResult
+
+
 class ErrorResponse(BaseModel):
     """Uniform error envelope (FedRAMP SI-11 — error handling)."""
 

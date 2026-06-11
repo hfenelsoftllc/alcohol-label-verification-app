@@ -1,8 +1,9 @@
-"""In-memory batch job store.
+"""In-memory batch job store (ISSUE 3.1).
 
-Phase 1 stub: a process-local dict keyed by job_id, cleared on restart. The real
-async orchestrator (ISSUE 3.1) and session-scoped store with TTL expiry
-(ISSUE 3.5) replace this. Kept deliberately tiny so it is easy to swap out.
+A process-local dict keyed by job_id, cleared on restart. `orchestrator.
+start_batch` reads and mutates the `Job` records created here as it
+processes each label. FedRAMP SI-12 (Information Management and Retention)
+— job state is retained only for the session/process lifetime.
 """
 
 from __future__ import annotations
