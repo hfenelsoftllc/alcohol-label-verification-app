@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from app.models import ApplicationData, ExtractedFields, OcrEngine, OverallStatus
-from batch import orchestrator, store
+from batch import store
 from tests.conftest import PNG_1X1
 from tests.test_jobs import VALID_APPLICATION_ROW, _submit_batch
 
@@ -32,7 +32,7 @@ def _parse_sse(text: str) -> list[tuple[str, dict]]:
 
 
 def test_stream_emits_progress_then_complete(client, monkeypatch):
-    monkeypatch.setattr(orchestrator, "extract_fields", lambda image_bytes: _matching_extracted_fields())
+    monkeypatch.setattr("app.pipeline.extract_fields", lambda image_bytes: _matching_extracted_fields())
 
     job_id = _submit_batch(client, n_images=3).json()["job_id"]
 
@@ -59,7 +59,7 @@ def test_stream_emits_error_event_for_failed_label(client, session_id, monkeypat
     """The orchestrator's per-label validate_image_bytes guard is defense in
     depth alongside the /verify/batch upload check (ISSUE 3.6): a corrupt
     label is reported as an `error` SSE event without aborting the batch."""
-    monkeypatch.setattr(orchestrator, "extract_fields", lambda image_bytes: _matching_extracted_fields())
+    monkeypatch.setattr("app.pipeline.extract_fields", lambda image_bytes: _matching_extracted_fields())
 
     app_data = ApplicationData(**VALID_APPLICATION_ROW)
     job = store.create_job(total=2, session_id=session_id)
@@ -85,7 +85,7 @@ def test_stream_emits_error_event_for_failed_label(client, session_id, monkeypat
 
 
 def test_stream_reconnect_after_completion_replays_results(client, monkeypatch):
-    monkeypatch.setattr(orchestrator, "extract_fields", lambda image_bytes: _matching_extracted_fields())
+    monkeypatch.setattr("app.pipeline.extract_fields", lambda image_bytes: _matching_extracted_fields())
 
     job_id = _submit_batch(client, n_images=2).json()["job_id"]
 

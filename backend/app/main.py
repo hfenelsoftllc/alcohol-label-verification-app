@@ -9,6 +9,7 @@ OpenAPI docs are auto-generated at /docs.
 
 from __future__ import annotations
 
+import logging
 import time
 import uuid
 
@@ -23,6 +24,7 @@ from app.models import ErrorResponse, HealthResponse
 from app.routers import jobs, verify
 
 configure_logging()
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Alcohol Label Verification API",
@@ -113,6 +115,18 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     request_id = getattr(request.state, "request_id", "")
     log_error(request_id=request_id, endpoint=request.url.path, status_code=422, error="validation_error", message="request validation failed")
     return _error(request, 422, error="validation_error", message="request validation failed")
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Catch-all so an unexpected error never reaches the client as a raw
+    stack trace (FedRAMP SI-17, Fail-Safe Procedures). The real exception is
+    logged server-side via `logger.exception` for incident response (IR-8);
+    the client only sees a generic, plain-language message."""
+    request_id = getattr(request.state, "request_id", "")
+    logger.exception("Unhandled exception", exc_info=exc)
+    log_error(request_id=request_id, endpoint=request.url.path, status_code=500, error="internal_error", message=str(exc))
+    return _error(request, status.HTTP_500_INTERNAL_SERVER_ERROR, "internal_error", "An unexpected error occurred. Please try again.")
 
 
 @app.get("/health", response_model=HealthResponse, tags=["system"])

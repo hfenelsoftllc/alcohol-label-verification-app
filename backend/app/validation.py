@@ -14,11 +14,17 @@ import os
 from fastapi import HTTPException, status
 
 #: Maximum accepted image size. Configurable via MAX_IMAGE_MB (default 20 MB).
-MAX_IMAGE_BYTES: int = int(os.getenv("MAX_IMAGE_MB", "20")) * 1024 * 1024
+MAX_IMAGE_MB: int = int(os.getenv("MAX_IMAGE_MB", "20"))
+MAX_IMAGE_BYTES: int = MAX_IMAGE_MB * 1024 * 1024
 
 #: Maximum total image size for a single /verify/batch request. Configurable
 #: via MAX_BATCH_MB (default 500 MB).
-MAX_BATCH_BYTES: int = int(os.getenv("MAX_BATCH_MB", "500")) * 1024 * 1024
+MAX_BATCH_MB: int = int(os.getenv("MAX_BATCH_MB", "500"))
+MAX_BATCH_BYTES: int = MAX_BATCH_MB * 1024 * 1024
+
+#: Plain-language description of the accepted image formats (AC7 — no magic
+#: byte / MIME jargon in user-facing messages).
+_ACCEPTED_FORMATS = "JPG, PNG, GIF, BMP, TIFF, or WEBP"
 
 #: Leading magic-byte signatures for the image formats we accept.
 _IMAGE_SIGNATURES: tuple[bytes, ...] = (
@@ -42,7 +48,7 @@ def decode_base64_image(data: str) -> bytes:
     except (binascii.Error, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="image is not valid base64",
+            detail="That image could not be read. Please try uploading it again.",
         ) from exc
 
 
@@ -58,12 +64,12 @@ def validate_image_bytes(data: bytes) -> None:
     if not is_recognized_image(data):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="unsupported media type: payload is not a recognized image",
+            detail=f"That file isn't a supported image type. Please upload a {_ACCEPTED_FORMATS} image.",
         )
     if len(data) > MAX_IMAGE_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=f"image exceeds the maximum size of {MAX_IMAGE_BYTES} bytes",
+            detail=f"That image is larger than {MAX_IMAGE_MB} MB. Please choose a smaller file.",
         )
 
 
@@ -72,19 +78,20 @@ def validate_batch_size(total_bytes: int) -> None:
     if total_bytes > MAX_BATCH_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=f"batch exceeds the maximum total size of {MAX_BATCH_BYTES} bytes",
+            detail=f"This batch is larger than {MAX_BATCH_MB} MB in total. Please upload fewer or smaller images.",
         )
 
 
 def validate_upload(content_type: str | None, size: int | None, filename: str | None) -> None:
     """Validate a multipart UploadFile by declared content-type and size."""
+    name = filename or "that file"
     if not (content_type or "").lower().startswith("image/"):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=f"file '{filename or '?'}' is not an image",
+            detail=f"'{name}' isn't a supported image type. Please upload a {_ACCEPTED_FORMATS} image.",
         )
     if size is not None and size > MAX_IMAGE_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=f"file '{filename or '?'}' exceeds the maximum size of {MAX_IMAGE_BYTES} bytes",
+            detail=f"'{name}' is larger than {MAX_IMAGE_MB} MB. Please choose a smaller file.",
         )

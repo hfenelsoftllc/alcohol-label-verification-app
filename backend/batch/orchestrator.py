@@ -14,23 +14,11 @@ import asyncio
 import os
 from collections.abc import AsyncIterator, Iterable
 
-from app.models import (
-    BatchProgress,
-    GovernmentWarningCheck,
-    JobState,
-    OcrEngine,
-    OverallStatus,
-    VerificationResult,
-)
-from app.stubs import new_session_id
+from app.models import BatchProgress, GovernmentWarningCheck, JobState, OcrEngine, OverallStatus, VerificationResult
+from app.pipeline import INVALID_IMAGE_MESSAGE, new_session_id, run_verification
 from app.validation import validate_image_bytes
 from batch import store
 from batch.store import LabelInput
-from matching import engine
-from matching.exact_validator import validate_government_warning
-from ocr.adapter import extract_fields
-from ocr.preprocessor import maybe_preprocess
-from ocr.quality import assess_image_quality
 
 #: Default number of labels processed concurrently; override via BATCH_MAX_WORKERS.
 DEFAULT_MAX_WORKERS = 10
@@ -91,60 +79,28 @@ async def start_batch(job_id: str, label_pairs: Iterable[LabelInput]) -> AsyncIt
 
 
 def _process_label(label: LabelInput) -> VerificationResult:
-    """Run one label through pre-processing, OCR, matching, and Government
-    Warning checks.
+    """Run one label through the verification pipeline.
 
-    Pre-processing (ISSUE 4.1) runs on a copy of the image and is skipped
-    when the image already scores above
-    `ocr.preprocessor.SKIP_QUALITY_THRESHOLD`; either way, `image_quality`
-    reflects the original upload, not the (possibly preprocessed) OCR input.
-
-    Any failure (e.g. an undecodable image) is reported as an ERROR result
-    for this label rather than raised, so it cannot abort the whole batch
-    (FedRAMP SI-10).
+    Callers already run `validate_image_bytes` on every image at batch
+    submission time; this check is defense-in-depth. Any failure here, or
+    anywhere in `run_verification`, is reported as an ERROR result for this
+    label rather than raised, so it cannot abort the whole batch (FedRAMP
+    SI-10, SI-17).
     """
     try:
         validate_image_bytes(label.image_bytes)
-        image_quality = assess_image_quality(label.image_bytes)
-        ocr_input = maybe_preprocess(label.image_bytes, image_quality.score)
-        extracted = extract_fields(ocr_input)
-    except Exception as exc:
-        return _error_result(label, str(exc))
+    except Exception:
+        return VerificationResult(
+            session_id=new_session_id(),
+            overall_status=OverallStatus.ERROR,
+            fields=[],
+            government_warning=GovernmentWarningCheck(valid=False, issues=["INVALID_IMAGE"]),
+            image_quality_score=0.0,
+            quality_issues=[],
+            confidence_score=0.0,
+            ocr_engine_used=OcrEngine.TESSERACT,
+            filename=label.filename,
+            message=INVALID_IMAGE_MESSAGE,
+        )
 
-    match_report = engine.compare(extracted, label.application_data)
-    warning_check = validate_government_warning(
-        extracted.government_warning, label.application_data.government_warning
-    )
-
-    overall_status = match_report.overall_status
-    if not warning_check.valid:
-        overall_status = OverallStatus.FAIL
-
-    return VerificationResult(
-        session_id=new_session_id(),
-        overall_status=overall_status,
-        fields=match_report.fields,
-        government_warning=warning_check,
-        image_quality_score=image_quality.score,
-        quality_issues=image_quality.issues,
-        confidence_score=extracted.confidence_score,
-        ocr_engine_used=extracted.ocr_engine_used,
-        filename=label.filename,
-    )
-
-
-def _error_result(label: LabelInput, message: str) -> VerificationResult:
-    return VerificationResult(
-        session_id=new_session_id(),
-        overall_status=OverallStatus.ERROR,
-        fields=[],
-        government_warning=GovernmentWarningCheck(valid=False, issues=["PROCESSING_ERROR"]),
-        image_quality_score=0.0,
-        quality_issues=[],
-        confidence_score=0.0,
-        # No OCR engine ran; TESSERACT is the offline default and the closest
-        # available value to "none" without adding a new enum member.
-        ocr_engine_used=OcrEngine.TESSERACT,
-        filename=label.filename,
-        message=message,
-    )
+    return run_verification(label.image_bytes, label.application_data, filename=label.filename)

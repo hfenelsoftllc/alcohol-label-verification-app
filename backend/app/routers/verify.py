@@ -10,11 +10,10 @@ from app.models import (
     VerificationResult,
     VerifyRequest,
 )
-from app.stubs import build_stub_result
+from app.pipeline import run_verification
 from app.validation import decode_base64_image, validate_batch_size, validate_image_bytes, validate_upload
 from batch import store
 from batch.csv_input import parse_application_csv
-from ocr.quality import assess_image_quality
 
 router = APIRouter(tags=["verification"])
 
@@ -29,13 +28,12 @@ router = APIRouter(tags=["verification"])
     },
 )
 def verify(payload: VerifyRequest, http_request: Request) -> VerificationResult:
-    """Decode and validate the image, then return a (stub) verification result."""
+    """Decode and validate the image, then run it through the verification pipeline."""
     request_id = getattr(http_request.state, "request_id", "")
     image_bytes = decode_base64_image(payload.image)
     validate_image_bytes(image_bytes)
-    image_quality = assess_image_quality(image_bytes)
 
-    result = build_stub_result(payload.application_data, image_quality=image_quality)
+    result = run_verification(image_bytes, payload.application_data)
 
     log_ocr_started(request_id=request_id, session_id=result.session_id)
     log_ocr_completed(

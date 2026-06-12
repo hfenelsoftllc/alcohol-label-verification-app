@@ -227,7 +227,7 @@ function BatchUploadForm({ form, onZipFile, onCsvFile, onSubmit, submitting, sub
 
 // Live progress, results feed, and completion summary for a submitted batch.
 function BatchProgressView({ jobId, totalImages, stream, onRestart }) {
-  const { completed, total, recentResults, summary, done } = stream;
+  const { completed, total, recentResults, summary, done, reconnecting } = stream;
   const effectiveTotal = total || totalImages;
   const pct = effectiveTotal > 0 ? Math.round((completed / effectiveTotal) * 100) : 0;
 
@@ -254,6 +254,11 @@ function BatchProgressView({ jobId, totalImages, stream, onRestart }) {
           >
             <div className="h-3 rounded-full bg-treasury-600 transition-[width]" style={{ width: `${pct}%` }} />
           </div>
+          {reconnecting && (
+            <p role="status" aria-live="polite" className="text-sm font-medium text-warning">
+              Reconnecting…
+            </p>
+          )}
           {!done && <Spinner label="Verifying labels — this can take a while for large batches…" />}
         </div>
       </div>

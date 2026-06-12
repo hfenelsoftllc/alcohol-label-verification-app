@@ -253,6 +253,7 @@ remaining gaps in `POAM.md`.
 | SI-11 | Error Handling | **Implemented** | A uniform `ErrorResponse{error, message, request_id}` envelope is returned for all HTTP and validation errors (`backend/app/main.py`), and every error response also emits a `request_error` audit event (§AU-3). |
 | SI-12 | Information Management and Retention | **Planned** (Phase 3, ISSUE 3.5) | `SESSION_TTL_HOURS` (default 4h) is already a defined configuration setting (`.env.example`, `docker-compose.yml`) and `audit.log_session_expired()` is implemented and tested; the TTL **reaper** that calls it from `jobstore` is scoped for ISSUE 3.5. |
 | SI-16 | Memory Protection | **Implemented** (ISSUE 3.6) | Per-image (`MAX_IMAGE_MB`, default 20MB) and per-batch (`MAX_BATCH_MB`, default 500MB) size limits are enforced before any image is processed (`backend/app/validation.py`, HTTP 413), bounding worker memory regardless of client-supplied input. |
+| SI-17 | Fail-Safe Procedures | **Implemented** (ISSUE 4.4) | A catch-all `Exception` handler in `backend/app/main.py` guarantees every unhandled error still returns the `ErrorResponse{error, message, request_id}` envelope (§SI-11) rather than a raw stack trace. The OCR/matching pipeline is consolidated into `backend/app/pipeline.py::run_verification()`, shared by `/verify` and `/verify/batch`: an unreadable image (`assess_image_quality` issues == `["unreadable"]`) returns `overall_status: "ERROR"` with the plain-language message "Image quality too low to extract any fields" instead of crashing (AC3); any other pipeline exception (OCR, matching, or warning validation) is caught and returns `overall_status: "ERROR"` with a plain-language message, never a stack trace (AC7). In a batch, `backend/batch/orchestrator.py` isolates each label's failure to its own result — the remaining labels continue processing (AC4). On the frontend, `frontend/src/components/ErrorBoundary.jsx` catches any render error and shows "Something went wrong — your session is still active" with a "Return to start" recovery control (AC5, covered by `frontend/src/__tests__/errorBoundary.test.jsx`), and `frontend/src/hooks/useJobStream.js` surfaces the native `EventSource` connection-drop/reconnect transitions as a `reconnecting` state, rendered by `BatchPage.jsx` as a "Reconnecting…" status message (AC6). |
 
 ### CP — Contingency Planning
 
@@ -265,6 +266,12 @@ remaining gaps in `POAM.md`.
 | Control | Name | Status | Implementation Notes |
 |---|---|---|---|
 | PL-8 | Security and Privacy Architectures | **Implemented** (ISSUE 4.3) | The frontend meets WCAG 2.1 AA: an automated `axe-core` scan (vitest + jest-axe, `frontend/src/__tests__/accessibility.test.jsx`) finds zero violations across all 3 routes, and a manual keyboard-navigation + accessibility-tree pass confirmed a logical tab order, visible 3px focus indicators, correct landmark/heading/label structure, and `aria-live` error/status announcements. One gap (some secondary text below the 14px target) is documented as an accepted exception. See [`ACCESSIBILITY-REPORT.md`](../ACCESSIBILITY-REPORT.md). |
+
+### IR — Incident Response
+
+| Control | Name | Status | Implementation Notes |
+|---|---|---|---|
+| IR-8 | Incident Response Plan | **Planned** (Phase 4, ISSUE 4.5) | The full `INCIDENT-RESPONSE-PLAN.md` is scoped for ISSUE 4.5. ISSUE 4.4 lays the detection/triage groundwork it will build on: every request — success or failure — is tagged with a `request_id` correlation id (§AU-3) that ties a reviewer-visible error back to its `request_error` audit event; and pipeline failures are categorized into a small, stable taxonomy (`UNREADABLE_IMAGE`, `PROCESSING_ERROR`, `INVALID_IMAGE` in `backend/app/pipeline.py`) surfaced via `government_warning.issues`/`quality_issues`, giving the future incident response plan a ready-made set of triggers to classify and respond to. |
 
 ---
 
