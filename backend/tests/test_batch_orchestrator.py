@@ -9,9 +9,10 @@ import time
 import pytest
 
 from app.models import ApplicationData, ExtractedFields, JobState, OcrEngine, OverallStatus
+from app.pipeline import UNREADABLE_IMAGE_MESSAGE
 from batch import orchestrator, store
 from batch.orchestrator import LabelInput
-from tests.conftest import PNG_1X1
+from tests.conftest import PNG_1X1, UNREADABLE_PNG
 
 
 @pytest.fixture(autouse=True)
@@ -65,7 +66,7 @@ def _run_batch(job_id: str, labels: list[LabelInput]):
 
 def test_start_batch_processes_all_labels_in_order(monkeypatch):
     app_data = _application_data()
-    monkeypatch.setattr(orchestrator, "extract_fields", lambda image_bytes: _matching_extracted_fields(app_data))
+    monkeypatch.setattr("app.pipeline.extract_fields", lambda image_bytes: _matching_extracted_fields(app_data))
 
     job = store.create_job(total=3, session_id="test-session")
     labels = [
@@ -102,7 +103,7 @@ def test_concurrency_limit_respected(monkeypatch):
             counters["current"] -= 1
         return _matching_extracted_fields(app_data)
 
-    monkeypatch.setattr(orchestrator, "extract_fields", fake_extract_fields)
+    monkeypatch.setattr("app.pipeline.extract_fields", fake_extract_fields)
 
     job = store.create_job(total=6, session_id="test-session")
     labels = [LabelInput(image_bytes=PNG_1X1, application_data=app_data) for _ in range(6)]
@@ -116,7 +117,7 @@ def test_concurrency_limit_respected(monkeypatch):
 
 def test_malformed_image_produces_error_without_aborting_batch(monkeypatch):
     app_data = _application_data()
-    monkeypatch.setattr(orchestrator, "extract_fields", lambda image_bytes: _matching_extracted_fields(app_data))
+    monkeypatch.setattr("app.pipeline.extract_fields", lambda image_bytes: _matching_extracted_fields(app_data))
 
     job = store.create_job(total=3, session_id="test-session")
     labels = [
@@ -139,6 +140,30 @@ def test_malformed_image_produces_error_without_aborting_batch(monkeypatch):
     assert by_filename["good_2.png"].overall_status == OverallStatus.MATCH
 
 
+def test_unreadable_image_produces_error_without_aborting_batch(monkeypatch):
+    """ISSUE 4.4 AC3 + AC4 — an undecodable label gets an ERROR result with
+    the plain-language "unreadable" message; the rest of the batch still
+    completes."""
+    app_data = _application_data()
+    monkeypatch.setattr("app.pipeline.extract_fields", lambda image_bytes: _matching_extracted_fields(app_data))
+
+    job = store.create_job(total=2, session_id="test-session")
+    labels = [
+        LabelInput(image_bytes=UNREADABLE_PNG, application_data=app_data, filename="unreadable.png"),
+        LabelInput(image_bytes=PNG_1X1, application_data=app_data, filename="good.png"),
+    ]
+
+    progress_events = _run_batch(job.job_id, labels)
+
+    assert len(progress_events) == 2
+    assert job.state == JobState.COMPLETED
+
+    by_filename = {r.filename: r for r in job.results}
+    assert by_filename["unreadable.png"].overall_status == OverallStatus.ERROR
+    assert by_filename["unreadable.png"].message == UNREADABLE_IMAGE_MESSAGE
+    assert by_filename["good.png"].overall_status == OverallStatus.MATCH
+
+
 def test_default_max_workers_is_ten():
     assert orchestrator.DEFAULT_MAX_WORKERS == 10
     assert orchestrator._max_workers() == 10
@@ -154,7 +179,7 @@ def test_start_batch_raises_for_unknown_job():
 
 def test_load_300_labels_under_5s_average_no_crashes(monkeypatch):
     app_data = _application_data()
-    monkeypatch.setattr(orchestrator, "extract_fields", lambda image_bytes: _matching_extracted_fields(app_data))
+    monkeypatch.setattr("app.pipeline.extract_fields", lambda image_bytes: _matching_extracted_fields(app_data))
 
     total = 300
     job = store.create_job(total=total, session_id="test-session")

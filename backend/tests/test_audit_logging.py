@@ -9,7 +9,23 @@ from __future__ import annotations
 import json
 
 from app import audit
+from app.models import ExtractedFields, OcrEngine
 from tests.conftest import PNG_1X1_B64
+
+
+def _matching_extracted_fields(application_data: dict) -> ExtractedFields:
+    """An ExtractedFields that matches `application_data` on every field."""
+    return ExtractedFields(
+        brand=application_data["brand"],
+        class_type=application_data["class_type"],
+        abv=application_data["abv"],
+        net_contents=application_data["net_contents"],
+        name_address=application_data["name_address"],
+        country_of_origin=application_data["country_of_origin"],
+        government_warning=application_data["government_warning"],
+        confidence_score=98.0,
+        ocr_engine_used=OcrEngine.CLAUDE_VISION,
+    )
 
 
 def _events(raw: str) -> list[dict]:
@@ -25,7 +41,9 @@ def _events(raw: str) -> list[dict]:
     return events
 
 
-def test_verify_request_completed_has_required_fields(client, application_data, capsys):
+def test_verify_request_completed_has_required_fields(client, application_data, capsys, monkeypatch):
+    monkeypatch.setattr("app.pipeline.extract_fields", lambda image_bytes: _matching_extracted_fields(application_data))
+
     resp = client.post("/verify", json={"image": PNG_1X1_B64, "application_data": application_data})
     assert resp.status_code == 200
 
@@ -40,7 +58,9 @@ def test_verify_request_completed_has_required_fields(client, application_data, 
     assert completed["request_id"] == resp.headers["X-Request-ID"]
 
 
-def test_verify_emits_pipeline_events(client, application_data, capsys):
+def test_verify_emits_pipeline_events(client, application_data, capsys, monkeypatch):
+    monkeypatch.setattr("app.pipeline.extract_fields", lambda image_bytes: _matching_extracted_fields(application_data))
+
     resp = client.post("/verify", json={"image": PNG_1X1_B64, "application_data": application_data})
     body = resp.json()
 

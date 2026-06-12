@@ -6,7 +6,7 @@ import { COMPARISON_FIELDS, GOVERNMENT_WARNING_LABEL } from '../constants/labelF
 import { buildResultCsv, downloadCsv } from '../utils/exportResultCsv.js';
 
 // Below this image quality score, the reviewer is warned the result may be
-// unreliable (mirrors LOW_QUALITY_THRESHOLD in backend/app/stubs.py).
+// unreliable.
 const LOW_QUALITY_THRESHOLD = 40;
 
 const OVERALL_SUMMARY = {
@@ -92,6 +92,7 @@ export default function ReviewPage() {
             <p className="mt-2 text-lg font-semibold text-ink">
               {OVERALL_SUMMARY[result.overall_status] ?? OVERALL_SUMMARY.ERROR}
             </p>
+            {result.message && <p className="mt-2 text-sm text-muted">{result.message}</p>}
           </div>
           <StatusBadge status={result.overall_status} />
         </div>

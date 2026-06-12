@@ -7,8 +7,17 @@ import json
 import openpyxl
 import pytest
 
-from app.models import LABEL_FIELD_NAMES, ApplicationData, GovernmentWarningCheck
-from app.stubs import build_stub_result
+from app.models import (
+    LABEL_FIELD_NAMES,
+    ApplicationData,
+    FieldComparison,
+    GovernmentWarningCheck,
+    MatchStatus,
+    OcrEngine,
+    OverallStatus,
+    VerificationResult,
+)
+from app.pipeline import new_session_id
 from tests.conftest import PNG_1X1
 
 #: A row of application data that satisfies every required ApplicationData field.
@@ -171,11 +180,24 @@ def test_label_result_memory_footprint(application_data):
     to a small, bounded size, well within in-memory limits even for the
     largest supported batch."""
     app_data = ApplicationData(**application_data)
-    result = build_stub_result(app_data, filename="label_001.png")
-    result.government_warning = GovernmentWarningCheck(
-        valid=True,
-        extracted_text=app_data.government_warning,
-        expected_text=app_data.government_warning,
+    fields = [
+        FieldComparison(field=name, extracted=getattr(app_data, name), expected=getattr(app_data, name), status=MatchStatus.MATCH, score=100.0)
+        for name in ("brand", "class_type", "abv", "net_contents", "name_address", "country_of_origin")
+    ]
+    result = VerificationResult(
+        session_id=new_session_id(),
+        overall_status=OverallStatus.MATCH,
+        fields=fields,
+        government_warning=GovernmentWarningCheck(
+            valid=True,
+            extracted_text=app_data.government_warning,
+            expected_text=app_data.government_warning,
+        ),
+        image_quality_score=100.0,
+        quality_issues=[],
+        confidence_score=100.0,
+        ocr_engine_used=OcrEngine.CLAUDE_VISION,
+        filename="label_001.png",
     )
 
     size = len(json.dumps(result.model_dump(mode="json")))

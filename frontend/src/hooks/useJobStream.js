@@ -16,6 +16,7 @@ export default function useJobStream(jobId) {
   const [recentResults, setRecentResults] = useState([]);
   const [summary, setSummary] = useState(null);
   const [done, setDone] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
 
   useEffect(() => {
     if (!jobId) return undefined;
@@ -25,6 +26,7 @@ export default function useJobStream(jobId) {
     setRecentResults([]);
     setSummary(null);
     setDone(false);
+    setReconnecting(false);
 
     const source = new EventSource(jobStreamUrl(jobId));
 
@@ -40,10 +42,18 @@ export default function useJobStream(jobId) {
     // `progress`. EventSource also dispatches a connection-level "error"
     // event with no `data` when the stream itself drops — both arrive
     // through this listener, so tell them apart by the presence of `data`.
+    // On a connection-level drop, EventSource reconnects automatically
+    // (ISSUE 4.4 AC6); `open` fires again once it succeeds.
     const handleError = (event) => {
       if (event.data) {
         handleProgress(event);
+      } else {
+        setReconnecting(true);
       }
+    };
+
+    const handleOpen = () => {
+      setReconnecting(false);
     };
 
     const handleComplete = (event) => {
@@ -57,10 +67,11 @@ export default function useJobStream(jobId) {
 
     source.addEventListener('progress', handleProgress);
     source.addEventListener('error', handleError);
+    source.addEventListener('open', handleOpen);
     source.addEventListener('complete', handleComplete);
 
     return () => source.close();
   }, [jobId]);
 
-  return { completed, total, recentResults, summary, done };
+  return { completed, total, recentResults, summary, done, reconnecting };
 }
