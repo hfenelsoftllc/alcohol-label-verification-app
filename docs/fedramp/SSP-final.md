@@ -3,26 +3,28 @@
 | | |
 |---|---|
 | **System Name** | Alcohol Label Verification App (ALVA) — TTB COLA Automation PoC |
-| **Document Status** | **FINAL** — Phase 4 (ISSUE 4.5, complete FedRAMP documentation package) |
-| **Version** | 1.0 |
-| **Date** | 2026-06-11 |
-| **Issue** | [ISSUE 4.5 — Complete FedRAMP Documentation Package](../../project-management/PROJECT-PLAN.md) |
+| **Document Status** | **FINAL** — Phase 4 (ISSUE 4.5, complete FedRAMP documentation package; updated by ISSUE 4.6, Threat Model) |
+| **Version** | 1.1 |
+| **Date** | 2026-06-12 |
+| **Issue** | [ISSUE 4.5 — Complete FedRAMP Documentation Package](../../project-management/PROJECT-PLAN.md), [ISSUE 4.6 — Threat Model Documentation](https://github.com/hfenelsoftllc/alcohol-label-verification-app/issues/48) |
 | **Template Basis** | NIST SP 800-18 / FedRAMP SSP outline, mapped to NIST SP 800-53 Rev. 5 controls |
 | **Target Baseline** | FedRAMP **Moderate** |
 | **Predecessor Document** | [`SSP-draft.md`](./SSP-draft.md) (ISSUE 1.6 — Draft SSP, Phase 1) |
 
 > **Scope note.** This is the **final** SSP for the ALVA PoC, superseding `SSP-draft.md`. It
 > documents the architecture, data, and controls **as implemented through Phase 4** (issues
-> 1.1–4.5) and carries the complete
+> 1.1–4.6) and carries the complete
 > [FedRAMP Control Coverage Matrix](../../project-management/PROJECT-PLAN.md#fedramp-control-coverage-matrix)
-> (§8, plus the color-coded [`CONTROL-MATRIX.xlsx`](./CONTROL-MATRIX.xlsx)). The single
-> remaining gap — **RA-3** (Risk Assessment / Threat Model, ISSUE 4.6) — is tracked with a
-> remediation timeline in [`POAM.md`](./POAM.md). Full ATO is out of scope for this PoC; this
-> document, together with [`POAM.md`](./POAM.md), [`DATA-FLOW-final.md`](./DATA-FLOW-final.md),
+> (§8, plus the color-coded [`CONTROL-MATRIX.xlsx`](./CONTROL-MATRIX.xlsx)). All 33 tracked
+> controls are now **Implemented** — **RA-3** (Risk Assessment / Threat Model) was the final
+> open item and is closed by [`THREAT-MODEL.md`](./THREAT-MODEL.md) (ISSUE 4.6), tracked to
+> closure in [`POAM.md`](./POAM.md). Full ATO is out of scope for this PoC; this document,
+> together with [`POAM.md`](./POAM.md), [`DATA-FLOW-final.md`](./DATA-FLOW-final.md),
 > [`SAST-RESULTS.md`](./SAST-RESULTS.md), [`CONTROL-MATRIX.xlsx`](./CONTROL-MATRIX.xlsx),
 > [`INCIDENT-RESPONSE-PLAN.md`](./INCIDENT-RESPONSE-PLAN.md),
-> [`SYSTEM-BOUNDARY.png`](./SYSTEM-BOUNDARY.png), and [`PEER-REVIEW.md`](./PEER-REVIEW.md) forms
-> the assessment-ready documentation package handed off to the TTB ISSO (§11).
+> [`SYSTEM-BOUNDARY.png`](./SYSTEM-BOUNDARY.png), [`PEER-REVIEW.md`](./PEER-REVIEW.md), and
+> [`THREAT-MODEL.md`](./THREAT-MODEL.md) forms the assessment-ready documentation package
+> handed off to the TTB ISSO (§11).
 
 ---
 
@@ -223,8 +225,9 @@ The table below maps every control family in the
 (**AC, AU, CA, CM, IA, IR, PL, RA, SA, SC, SI** — 29 controls), plus 4 PoC-specific additions
 carried over from `SSP-draft.md` (**AU-14, SI-11, CP-10, PL-8**), to their final implementation
 status. The same 33 controls, color-coded by status, are published as
-[`CONTROL-MATRIX.xlsx`](./CONTROL-MATRIX.xlsx). The single remaining gap (RA-3) is tracked with
-a remediation timeline in [`POAM.md`](./POAM.md).
+[`CONTROL-MATRIX.xlsx`](./CONTROL-MATRIX.xlsx). All 33 controls are **Implemented**;
+[`POAM.md`](./POAM.md) tracks no remaining control gaps (only a forward-looking scalability
+item, T-D2, surfaced by [`THREAT-MODEL.md`](./THREAT-MODEL.md)).
 
 ### AC — Access Control
 
@@ -296,7 +299,7 @@ a remediation timeline in [`POAM.md`](./POAM.md).
 | Control | Name | Status | Implementation Notes |
 |---|---|---|---|
 | RA-2 | Security Categorization | **Implemented** | FIPS 199 categorization performed in §2 — Confidentiality, Integrity, and Availability are all **Moderate**, driving selection of the FedRAMP Moderate control baseline. |
-| RA-3 | Risk Assessment | **Planned** (Phase 4, ISSUE 4.6) | A dedicated threat model and attack-surface analysis (`THREAT-MODEL.md`) is scoped for [ISSUE 4.6 — Threat Model Documentation](https://github.com/hfenelsoftllc/alcohol-label-verification-app/issues/48). This is the sole open item tracked in [`POAM.md`](./POAM.md). |
+| RA-3 | Risk Assessment | **Implemented** (Phase 4, ISSUE 4.6) | [`THREAT-MODEL.md`](./THREAT-MODEL.md) applies STRIDE to all six required categories against the trust boundaries in `DATA-FLOW-final.md` §3/§5, rating likelihood/impact/residual risk for 18 threats and calling out the Top 3 with owners and mitigation timelines. Reviewed and signed off by the project lead (`THREAT-MODEL.md` §7); RA-3 closed in [`POAM.md`](./POAM.md). |
 | RA-5 | Vulnerability Monitoring and Scanning | **Implemented** (ISSUE 2.6, 4.5) | `pip-audit` (Python SCA), `npm audit` (Node SCA), and Trivy (container image CVE scanning) run on every PR (`.github/workflows/ci.yml`); results in [`SAST-RESULTS.md`](./SAST-RESULTS.md), re-run for this final package on 2026-06-11. |
 
 ### SA — System and Services Acquisition
@@ -310,7 +313,7 @@ a remediation timeline in [`POAM.md`](./POAM.md).
 
 | Control | Name | Status | Implementation Notes |
 |---|---|---|---|
-| CA-5 | Plan of Action and Milestones | **Implemented** (ISSUE 4.5) | Known gaps are tracked with remediation timelines in [`POAM.md`](./POAM.md); as of this document the sole open item is RA-3 (Threat Model, ISSUE 4.6). |
+| CA-5 | Plan of Action and Milestones | **Implemented** (ISSUE 4.5, 4.6) | [`POAM.md`](./POAM.md) tracks no remaining NIST control gaps (RA-3 closed by `THREAT-MODEL.md`, ISSUE 4.6); it retains one forward-looking scalability item (T-D2, batch-concurrency cap) for the pilot/production phase. |
 | CA-7 | Continuous Monitoring | **Implemented** | The CI pipeline (`.github/workflows/ci.yml`) re-runs the full SAST/SCA/container-scan suite on every PR to `main`, gated by the aggregate `CI Success` required status check — control effectiveness is continuously re-verified, not assessed once. |
 
 ### IR — Incident Response
@@ -349,8 +352,10 @@ ISSO review (§11).
 
 ## 11. Status and Next Steps
 
-This document is the **final** System Security Plan delivered under **ISSUE 4.5 — Complete
-FedRAMP Documentation Package** (Phase 4). Relative to `SSP-draft.md`, this revision:
+This document is the **final** System Security Plan, originally delivered under
+**ISSUE 4.5 — Complete FedRAMP Documentation Package** (Phase 4) and updated by
+**ISSUE 4.6 — Threat Model Documentation** to close the package's last open item. Relative to
+`SSP-draft.md`, this revision:
 
 - Corrects the TB-1 (Frontend ↔ Backend) wording in §4 and §7 from "HTTPS reverse proxy" to
   **internal HTTP, Docker bridge network**, per the trust-boundary analysis in
@@ -359,6 +364,8 @@ FedRAMP Documentation Package** (Phase 4). Relative to `SSP-draft.md`, this revi
   (`backend/batch/store.py::_reap_expired`, ISSUE 3.5) is in place and tested.
 - Updates **IR-8** (§8) from "Planned" to **Implemented** — see
   [`INCIDENT-RESPONSE-PLAN.md`](./INCIDENT-RESPONSE-PLAN.md).
+- Updates **RA-3** (§8) from "Planned" to **Implemented** — see
+  [`THREAT-MODEL.md`](./THREAT-MODEL.md) (ISSUE 4.6).
 - Adds **CA-5, CA-7, PL-2, RA-2, RA-3, RA-5, SA-9, SA-11** to §8, completing the full 29-control
   [FedRAMP Control Coverage Matrix](../../project-management/PROJECT-PLAN.md#fedramp-control-coverage-matrix)
   plus 4 PoC-specific additions (AU-14, SI-11, CP-10, PL-8) carried over from `SSP-draft.md` —
@@ -368,24 +375,25 @@ FedRAMP Documentation Package** (Phase 4). Relative to `SSP-draft.md`, this revi
 - References the finalized [`SYSTEM-BOUNDARY.png`](./SYSTEM-BOUNDARY.png) (§4) and
   [`DATA-FLOW-final.md`](./DATA-FLOW-final.md).
 
-### Documentation package delivered with this revision
+### Documentation package delivered
 
 | Document | Purpose |
 |---|---|
 | `SSP-final.md` (this document) | Finalized System Security Plan (PL-2) |
-| [`POAM.md`](./POAM.md) | Plan of Action & Milestones (CA-5) |
+| [`POAM.md`](./POAM.md) | Plan of Action & Milestones (CA-5) — no open control gaps |
 | [`DATA-FLOW-final.md`](./DATA-FLOW-final.md) | Finalized data flow & trust boundaries (AC-4, SC-8) |
 | [`SAST-RESULTS.md`](./SAST-RESULTS.md) | Final SAST/SCA/container scan results, re-run 2026-06-11 (SI-3, RA-5) |
-| [`CONTROL-MATRIX.xlsx`](./CONTROL-MATRIX.xlsx) | NIST 800-53r5 Moderate-baseline control matrix (33 controls) |
+| [`CONTROL-MATRIX.xlsx`](./CONTROL-MATRIX.xlsx) | NIST 800-53r5 Moderate-baseline control matrix (33 controls, all Implemented) |
 | [`INCIDENT-RESPONSE-PLAN.md`](./INCIDENT-RESPONSE-PLAN.md) | Incident response procedures (IR-8) |
 | [`SYSTEM-BOUNDARY.png`](./SYSTEM-BOUNDARY.png) | Finalized authorization boundary diagram |
 | [`PEER-REVIEW.md`](./PEER-REVIEW.md) | Independent review of this package (AC8) |
+| [`THREAT-MODEL.md`](./THREAT-MODEL.md) | STRIDE threat model and risk assessment (RA-3) |
 
-### Remaining gap
+### Remaining gaps
 
-The only open item carried into `POAM.md` is **RA-3 (Risk Assessment)**: a dedicated
-`THREAT-MODEL.md` is scoped for **ISSUE 4.6 — Threat Model Documentation**
-([GitHub #48](https://github.com/hfenelsoftllc/alcohol-label-verification-app/issues/48)).
+None. All 33 tracked NIST controls are **Implemented**; `POAM.md` §1 retains only **T-D2**, a
+forward-looking scalability item (global batch-job concurrency cap) for the pilot/production
+phase — not a gap in any currently-assessed control.
 
 ### Hand-off
 

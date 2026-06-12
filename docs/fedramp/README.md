@@ -15,15 +15,17 @@ deliverable is a complete, assessable package.
 | `PREPROCESSING-AB-TEST.md` | 4 | 4.1 | Complete |
 | `LOAD-TEST-RESULTS.md` (in `/docs`) | 4 | 4.2 | Complete |
 | `ACCESSIBILITY-REPORT.md` (in `/docs`) | 4 | 4.3 | Complete |
-| `POAM.md` | 4 | 4.5 | Complete |
-| `CONTROL-MATRIX.xlsx` | 4 | 4.5 | Complete |
+| `POAM.md` | 4 | 4.5, 4.6 | Complete |
+| `CONTROL-MATRIX.xlsx` | 4 | 4.5, 4.6 | Complete |
 | `INCIDENT-RESPONSE-PLAN.md` | 4 | 4.5 | Complete |
 | `SYSTEM-BOUNDARY.png` | 4 | 4.5 | Complete |
-| `PEER-REVIEW.md` | 4 | 4.5 | Pending |
-| `THREAT-MODEL.md` | 4 | 4.6 | Pending |
+| `PEER-REVIEW.md` | 4 | 4.5 | Complete |
+| `THREAT-MODEL.md` | 4 | 4.6 | Complete |
 
 This package (everything marked **Final**/Complete above) is ready for hand-off to the TTB
-ISSO per [`SSP-final.md`](./SSP-final.md) §11. The only remaining gap is **RA-3** (Risk
-Assessment / `THREAT-MODEL.md`, ISSUE 4.6), tracked in [`POAM.md`](./POAM.md).
+ISSO per [`SSP-final.md`](./SSP-final.md) §11. All 33 tracked NIST controls are
+**Implemented** — `THREAT-MODEL.md` (RA-3, ISSUE 4.6) closed the package's last open item.
+[`POAM.md`](./POAM.md) retains one forward-looking scalability item (T-D2, global batch-job
+concurrency cap) for the pilot/production phase.
 
 System categorization: **Moderate** (C=M, I=M, A=M) per FIPS 199.
