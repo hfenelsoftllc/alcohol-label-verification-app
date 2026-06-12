@@ -1,0 +1,23 @@
+flowchart TB
+    USER(["TTB Reviewer\n(internal network)"])
+
+    subgraph BOUNDARY["AUTHORIZATION BOUNDARY — single Docker host, TTB-operated"]
+        direction TB
+        FE["Frontend container\nnginx + React SPA\n(alvf-frontend)"]
+        BE["Backend container\nFastAPI app\n(alvf-backend)"]
+        TESS["Local Tesseract OCR\n(bundled in backend image,\nno network egress)"]
+        MEM[("In-memory job/session store\nprocess memory only,\nTTL-bounded — SI-12")]
+
+        FE -- "Internal HTTP (TB-1)\nsame-origin /api/* reverse proxy,\nDocker bridge network only" --> BE
+        BE --- TESS
+        BE --- MEM
+    end
+
+    USER -- "HTTPS + signed session cookie\n(IA-2 / AC-3 / SC-23)" --> FE
+
+    BE -- "HTTPS (TLS 1.2+)\nimage bytes only, OCR_MODE=auto\nsingle whitelisted endpoint — SC-8 / SA-9" --> CLAUDE["Claude Vision API\n(Anthropic — external,\nSA-9 whitelisted endpoint)"]
+
+    classDef boundary fill:#fce7f3,stroke:#db2777,stroke-width:2px
+    classDef ext fill:#f1f5f9,stroke:#64748b
+    class BOUNDARY boundary
+    class CLAUDE ext
