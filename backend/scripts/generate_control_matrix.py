@@ -68,13 +68,18 @@ CONTROLS = [
     ("CM-3", "Configuration Change Control", "Configuration Management", "Implemented", "-",
      "GitHub branch protection on main requires the aggregate CI Success status check; all "
      "changes land via reviewed PRs (CODEOWNERS)."),
-    ("CM-6", "Configuration Settings", "Configuration Management", "Implemented", "-",
-     "All tunables are environment variables documented in .env.example (LOG_LEVEL, OCR_MODE, "
-     "MAX_IMAGE_MB, MAX_BATCH_MB, SESSION_TTL_HOURS, SESSION_SECRET_KEY, etc.) -- no hardcoded "
-     "configuration or secrets."),
-    ("CM-7", "Least Functionality", "Configuration Management", "Implemented", "-",
+    ("CM-6", "Configuration Settings", "Configuration Management", "Implemented", "ISSUE 4.7",
+     "All tunables are environment variables documented in .env.example and the full "
+     "reference table in README.md (LOG_LEVEL, OCR_MODE, CLAUDE_VISION_MODEL, "
+     "OCR_API_TIMEOUT_SECONDS, OCR_CLAUDE_CONFIDENCE, OCR_TESSERACT_CONFIDENCE, MAX_IMAGE_MB, "
+     "MAX_BATCH_MB, BATCH_MAX_WORKERS, SESSION_TTL_HOURS, SESSION_SECRET_KEY, etc.) -- no "
+     "hardcoded configuration or secrets. Every variable is wired through docker-compose.yml "
+     "to the backend container."),
+    ("CM-7", "Least Functionality", "Configuration Management", "Implemented", "ISSUE 4.7",
      "Backend container runs as an unprivileged app user; both images are based on "
-     "-slim/-alpine variants with minimal installed packages."),
+     "-slim/-alpine variants with minimal installed packages. DEPLOYMENT-GUIDE.md documents "
+     "the single outbound firewall rule (api.anthropic.com:443) and recommends not "
+     "publishing BACKEND_PORT externally in production."),
     ("IA-2", "Identification and Authentication", "Identification and Authentication", "Implemented", "ISSUE 3.7",
      "Each browser is identified by a cryptographically random session id "
      "(secrets.token_urlsafe(32)), issued on first visit and validated on every request via an "
@@ -191,7 +196,7 @@ def build_workbook() -> Workbook:
     planned = sum(1 for row in CONTROLS if row[3] == "Planned")
 
     summary_ws = wb.create_sheet("Summary")
-    summary_ws.append(["NIST SP 800-53r5 Moderate Baseline -- ALVA Control Matrix (ISSUE 4.5, 4.6)"])
+    summary_ws.append(["NIST SP 800-53r5 Moderate Baseline -- ALVA Control Matrix (ISSUE 4.5, 4.6, 4.7)"])
     summary_ws.append([])
     summary_ws.append(["Total controls", len(CONTROLS)])
     summary_ws.append(["Implemented", implemented])

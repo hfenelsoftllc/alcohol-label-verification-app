@@ -9,7 +9,7 @@ operational guides.
 docs/
 ├── architecture/   # ADRs (ADR-001 System Architecture, ...)
 ├── fedramp/        # FedRAMP Moderate package: SSP, data flow, threat model, SAST results
-├── DEPLOYMENT-GUIDE.md     # (Phase 4) install & air-gapped operation
+├── DEPLOYMENT-GUIDE.md     # (Phase 4, ISSUE 4.7) install & air-gapped operation
 ├── LOAD-TEST-RESULTS.md    # (Phase 4) performance evidence
 └── ACCESSIBILITY-REPORT.md # (Phase 4) WCAG AA audit results
 ```

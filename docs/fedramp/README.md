@@ -21,10 +21,14 @@ deliverable is a complete, assessable package.
 | `SYSTEM-BOUNDARY.png` | 4 | 4.5 | Complete |
 | `PEER-REVIEW.md` | 4 | 4.5 | Complete |
 | `THREAT-MODEL.md` | 4 | 4.6 | Complete |
+| [`README.md`](../../README.md) (repo root) | 4 | 4.7 | Complete |
+| [`DEPLOYMENT-GUIDE.md`](../DEPLOYMENT-GUIDE.md) (in `/docs`) | 4 | 4.7 | Complete |
 
 This package (everything marked **Final**/Complete above) is ready for hand-off to the TTB
 ISSO per [`SSP-final.md`](./SSP-final.md) §11. All 33 tracked NIST controls are
-**Implemented** — `THREAT-MODEL.md` (RA-3, ISSUE 4.6) closed the package's last open item.
+**Implemented** — `THREAT-MODEL.md` (RA-3, ISSUE 4.6) closed the package's last open item, and
+`README.md` / `DEPLOYMENT-GUIDE.md` (CM-6, CM-7, ISSUE 4.7) document the full configuration
+reference, the single outbound firewall allowlist entry, and air-gapped operation.
 [`POAM.md`](./POAM.md) retains one forward-looking scalability item (T-D2, global batch-job
 concurrency cap) for the pilot/production phase.
 
