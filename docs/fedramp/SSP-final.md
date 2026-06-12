@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | **System Name** | Alcohol Label Verification App (ALVA) — TTB COLA Automation PoC |
-| **Document Status** | **FINAL** — Phase 4 (ISSUE 4.5, complete FedRAMP documentation package; updated by ISSUE 4.6, Threat Model) |
-| **Version** | 1.1 |
+| **Document Status** | **FINAL** — Phase 4 (ISSUE 4.5, complete FedRAMP documentation package; updated by ISSUE 4.6, Threat Model, and ISSUE 4.7, Final README & Deployment Guide) |
+| **Version** | 1.2 |
 | **Date** | 2026-06-12 |
-| **Issue** | [ISSUE 4.5 — Complete FedRAMP Documentation Package](../../project-management/PROJECT-PLAN.md), [ISSUE 4.6 — Threat Model Documentation](https://github.com/hfenelsoftllc/alcohol-label-verification-app/issues/48) |
+| **Issue** | [ISSUE 4.5 — Complete FedRAMP Documentation Package](../../project-management/PROJECT-PLAN.md), [ISSUE 4.6 — Threat Model Documentation](https://github.com/hfenelsoftllc/alcohol-label-verification-app/issues/48), [ISSUE 4.7 — Final README & Deployment Guide](https://github.com/hfenelsoftllc/alcohol-label-verification-app/issues/49) |
 | **Template Basis** | NIST SP 800-18 / FedRAMP SSP outline, mapped to NIST SP 800-53 Rev. 5 controls |
 | **Target Baseline** | FedRAMP **Moderate** |
 | **Predecessor Document** | [`SSP-draft.md`](./SSP-draft.md) (ISSUE 1.6 — Draft SSP, Phase 1) |
@@ -22,9 +22,10 @@
 > together with [`POAM.md`](./POAM.md), [`DATA-FLOW-final.md`](./DATA-FLOW-final.md),
 > [`SAST-RESULTS.md`](./SAST-RESULTS.md), [`CONTROL-MATRIX.xlsx`](./CONTROL-MATRIX.xlsx),
 > [`INCIDENT-RESPONSE-PLAN.md`](./INCIDENT-RESPONSE-PLAN.md),
-> [`SYSTEM-BOUNDARY.png`](./SYSTEM-BOUNDARY.png), [`PEER-REVIEW.md`](./PEER-REVIEW.md), and
-> [`THREAT-MODEL.md`](./THREAT-MODEL.md) forms the assessment-ready documentation package
-> handed off to the TTB ISSO (§11).
+> [`SYSTEM-BOUNDARY.png`](./SYSTEM-BOUNDARY.png), [`PEER-REVIEW.md`](./PEER-REVIEW.md),
+> [`THREAT-MODEL.md`](./THREAT-MODEL.md), and the root
+> [`README.md`](../../README.md) / [`DEPLOYMENT-GUIDE.md`](../DEPLOYMENT-GUIDE.md) (ISSUE 4.7)
+> forms the assessment-ready documentation package handed off to the TTB ISSO (§11).
 
 ---
 
@@ -252,8 +253,8 @@ item, T-D2, surfaced by [`THREAT-MODEL.md`](./THREAT-MODEL.md)).
 |---|---|---|---|
 | CM-2 | Baseline Configuration | **Implemented** | All runtime dependencies are pinned (`backend/requirements.txt`, `frontend/package.json` + lockfile); base images are digest-pinned (`docker/backend.Dockerfile`, `docker/frontend.Dockerfile`). |
 | CM-3 | Configuration Change Control | **Implemented** | GitHub branch protection on `main` requires the aggregate `CI Success` status check; all changes land via reviewed PRs (`CODEOWNERS`). |
-| CM-6 | Configuration Settings | **Implemented** | All tunables are environment variables documented in `.env.example` (`LOG_LEVEL`, `OCR_MODE`, `CLAUDE_VISION_MODEL`, `OCR_API_TIMEOUT_SECONDS`, `MAX_IMAGE_MB`, `MAX_BATCH_MB`, `SESSION_TTL_HOURS`, `SESSION_SECRET_KEY`, `VITE_API_URL`, etc.) — no hardcoded configuration or secrets. |
-| CM-7 | Least Functionality | **Implemented** | Backend container runs as an unprivileged `app` user (`docker/backend.Dockerfile`); both images are based on `-slim`/`-alpine` variants with minimal installed packages. |
+| CM-6 | Configuration Settings | **Implemented** | All tunables are environment variables documented in `.env.example` and the full reference table in `README.md` (`LOG_LEVEL`, `OCR_MODE`, `CLAUDE_VISION_MODEL`, `OCR_API_TIMEOUT_SECONDS`, `OCR_CLAUDE_CONFIDENCE`, `OCR_TESSERACT_CONFIDENCE`, `MAX_IMAGE_MB`, `MAX_BATCH_MB`, `BATCH_MAX_WORKERS`, `SESSION_TTL_HOURS`, `SESSION_SECRET_KEY`, `VITE_API_URL`, etc.) — no hardcoded configuration or secrets. As of ISSUE 4.7, every variable in `.env.example` is also wired through `docker-compose.yml` to the backend container, so an operator's `.env` takes effect via the documented one-command setup. |
+| CM-7 | Least Functionality | **Implemented** | Backend container runs as an unprivileged `app` user (`docker/backend.Dockerfile`); both images are based on `-slim`/`-alpine` variants with minimal installed packages. [`DEPLOYMENT-GUIDE.md`](../DEPLOYMENT-GUIDE.md) (ISSUE 4.7) documents the single outbound firewall rule (`api.anthropic.com:443`, optional/omittable for air-gapped operation) and recommends not publishing `BACKEND_PORT` externally in production, since the SPA only needs the frontend's `/api/*` reverse proxy. |
 
 ### IA — Identification and Authentication
 
@@ -353,9 +354,10 @@ ISSO review (§11).
 ## 11. Status and Next Steps
 
 This document is the **final** System Security Plan, originally delivered under
-**ISSUE 4.5 — Complete FedRAMP Documentation Package** (Phase 4) and updated by
-**ISSUE 4.6 — Threat Model Documentation** to close the package's last open item. Relative to
-`SSP-draft.md`, this revision:
+**ISSUE 4.5 — Complete FedRAMP Documentation Package** (Phase 4), updated by
+**ISSUE 4.6 — Threat Model Documentation** to close the package's last open item, and updated
+again by **ISSUE 4.7 — Final README & Deployment Guide**. Relative to `SSP-draft.md`, this
+revision:
 
 - Corrects the TB-1 (Frontend ↔ Backend) wording in §4 and §7 from "HTTPS reverse proxy" to
   **internal HTTP, Docker bridge network**, per the trust-boundary analysis in
@@ -374,6 +376,10 @@ This document is the **final** System Security Plan, originally delivered under
   `backend/batch/store.py` (moved in ISSUE 3.1).
 - References the finalized [`SYSTEM-BOUNDARY.png`](./SYSTEM-BOUNDARY.png) (§4) and
   [`DATA-FLOW-final.md`](./DATA-FLOW-final.md).
+- Adds [`DEPLOYMENT-GUIDE.md`](../DEPLOYMENT-GUIDE.md) (ISSUE 4.7) and updates the **CM-6**
+  and **CM-7** (§8) evidence notes — the env var reference is now complete and every
+  `.env.example` variable is wired through `docker-compose.yml`, and the single outbound
+  firewall allowlist entry (`api.anthropic.com:443`) is documented explicitly.
 
 ### Documentation package delivered
 
@@ -388,6 +394,8 @@ This document is the **final** System Security Plan, originally delivered under
 | [`SYSTEM-BOUNDARY.png`](./SYSTEM-BOUNDARY.png) | Finalized authorization boundary diagram |
 | [`PEER-REVIEW.md`](./PEER-REVIEW.md) | Independent review of this package (AC8) |
 | [`THREAT-MODEL.md`](./THREAT-MODEL.md) | STRIDE threat model and risk assessment (RA-3) |
+| [`README.md`](../../README.md) | Prerequisites, one-command setup, full env var reference, tests, access (CM-6) |
+| [`DEPLOYMENT-GUIDE.md`](../DEPLOYMENT-GUIDE.md) | Firewall allowlist, Docker install, air-gapped mode, backup/restore, updates (CM-6, CM-7) |
 
 ### Remaining gaps
 
