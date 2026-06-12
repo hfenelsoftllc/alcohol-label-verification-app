@@ -284,6 +284,10 @@ async def _stream_progress(job: store.Job) -> AsyncIterator[str]:
     else:
         seen: set[int] = set()
         while True:
+            current = store.get_job(job.job_id)
+            if current is None:
+                break
+            job = current
             for index, result in enumerate(job.results):
                 if result is None or index in seen:
                     continue

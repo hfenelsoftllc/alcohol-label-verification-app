@@ -1,0 +1,12 @@
+backend/.venv
+backend/.pytest_cache
+backend/**/__pycache__
+backend/tests
+backend/scripts
+frontend/node_modules
+frontend/dist
+.git
+docs
+docs-data
+project-management
+tests

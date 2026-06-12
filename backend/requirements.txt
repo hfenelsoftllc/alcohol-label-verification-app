@@ -12,3 +12,4 @@ numpy==2.2.6                       # array ops for OpenCV
 rapidfuzz==3.14.5                  # fuzzy string matching for the matching engine
 structlog==26.1.0                  # structured JSON audit logging (ISSUE 2.7)
 openpyxl==3.1.5                    # .xlsx export with styled cells (ISSUE 3.5)
+redis==5.2.1                       # optional cross-invocation session/job store (REDIS_URL)

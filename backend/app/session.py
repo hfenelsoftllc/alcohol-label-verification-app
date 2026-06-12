@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import os
 import secrets
 from dataclasses import dataclass, field
@@ -25,6 +26,7 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException, Request, status
 
+from app import redis_client
 from app.audit import log_session_expired
 
 #: Name of the cookie carrying the signed session id (AC1).
@@ -82,8 +84,15 @@ def _reap_expired() -> None:
 
 def create() -> Session:
     """Mint and store a new session with a cryptographically random id (AC3)."""
-    _reap_expired()
     session = Session(session_id=secrets.token_urlsafe(32))
+    if redis_client.client is not None:
+        redis_client.client.setex(
+            f"session:{session.session_id}",
+            int(SESSION_TTL_SECONDS),
+            json.dumps({"created_at": session.created_at.isoformat(), "last_accessed": session.last_accessed.isoformat()}),
+        )
+        return session
+    _reap_expired()
     _SESSIONS[session.session_id] = session
     return session
 
@@ -100,6 +109,14 @@ def validate_cookie(token: str | None) -> str | None:
     session_id = _unsign(token)
     if session_id is None:
         return None
+
+    if redis_client.client is not None:
+        key = f"session:{session_id}"
+        if redis_client.client.get(key) is None:
+            return None
+        redis_client.client.expire(key, int(SESSION_TTL_SECONDS))
+        return session_id
+
     session = _SESSIONS.get(session_id)
     if session is None:
         return None
@@ -142,4 +159,7 @@ def get_session_id(request: Request) -> str:
 
 def clear() -> None:
     """Test helper — drop all sessions."""
+    if redis_client.client is not None:
+        redis_client.delete_by_prefix("session:")
+        return
     _SESSIONS.clear()

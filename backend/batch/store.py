@@ -10,11 +10,14 @@ inactivity (ISSUE 3.5).
 
 from __future__ import annotations
 
+import base64
+import json
 import os
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from app import redis_client
 from app.audit import log_session_expired
 from app.models import ApplicationData, JobState, VerificationResult
 
@@ -65,15 +68,82 @@ def _reap_expired() -> None:
         log_session_expired(session_id=job_id)
 
 
+def _label_to_dict(label: LabelInput) -> dict:
+    return {
+        "image_bytes": base64.b64encode(label.image_bytes).decode("ascii"),
+        "application_data": label.application_data.model_dump(mode="json"),
+        "filename": label.filename,
+    }
+
+
+def _label_from_dict(data: dict) -> LabelInput:
+    return LabelInput(
+        image_bytes=base64.b64decode(data["image_bytes"]),
+        application_data=ApplicationData.model_validate(data["application_data"]),
+        filename=data["filename"],
+    )
+
+
+def _job_to_dict(job: Job) -> dict:
+    return {
+        "job_id": job.job_id,
+        "session_id": job.session_id,
+        "total": job.total,
+        "state": job.state.value,
+        "completed": job.completed,
+        "results": [result.model_dump(mode="json") if result is not None else None for result in job.results],
+        "labels": [_label_to_dict(label) for label in job.labels],
+        "created_at": job.created_at.isoformat(),
+        "last_accessed": job.last_accessed.isoformat(),
+    }
+
+
+def _job_from_dict(data: dict) -> Job:
+    return Job(
+        job_id=data["job_id"],
+        session_id=data["session_id"],
+        total=data["total"],
+        state=JobState(data["state"]),
+        completed=data["completed"],
+        results=[VerificationResult.model_validate(result) if result is not None else None for result in data["results"]],
+        labels=[_label_from_dict(label) for label in data["labels"]],
+        created_at=datetime.fromisoformat(data["created_at"]),
+        last_accessed=datetime.fromisoformat(data["last_accessed"]),
+    )
+
+
+def save_job(job: Job) -> None:
+    """Persist `job`'s current state to Redis (no-op in in-memory mode).
+
+    Called by the orchestrator as it progresses a job, so a `get_job` from a
+    different serverless invocation (Vercel) sees up-to-date results.
+    """
+    if redis_client.client is None:
+        return
+    redis_client.client.setex(f"job:{job.job_id}", int(SESSION_TTL_SECONDS), json.dumps(_job_to_dict(job)))
+
+
 def create_job(total: int, session_id: str) -> Job:
-    _reap_expired()
     job = Job(job_id=secrets.token_urlsafe(12), session_id=session_id, total=total)
+    if redis_client.client is not None:
+        save_job(job)
+        return job
+    _reap_expired()
     _JOBS[job.job_id] = job
     return job
 
 
 def get_job(job_id: str) -> Job | None:
     """Look up a job, reaping (and returning None for) one that has expired."""
+    if redis_client.client is not None:
+        data = redis_client.client.get(f"job:{job_id}")
+        if data is None:
+            return None
+        job = _job_from_dict(json.loads(data))
+        job.last_accessed = datetime.now(timezone.utc)
+        save_job(job)
+        return job
+
     job = _JOBS.get(job_id)
     if job is None:
         return None
@@ -87,4 +157,7 @@ def get_job(job_id: str) -> Job | None:
 
 def clear() -> None:
     """Test helper — drop all jobs."""
+    if redis_client.client is not None:
+        redis_client.delete_by_prefix("job:")
+        return
     _JOBS.clear()

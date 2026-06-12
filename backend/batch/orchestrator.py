@@ -49,6 +49,7 @@ async def start_batch(job_id: str, label_pairs: Iterable[LabelInput]) -> AsyncIt
     labels = list(label_pairs)
     job.state = JobState.PROCESSING
     job.results = [None] * len(labels)
+    store.save_job(job)
 
     semaphore = asyncio.Semaphore(_max_workers())
     queue: asyncio.Queue = asyncio.Queue()
@@ -58,6 +59,7 @@ async def start_batch(job_id: str, label_pairs: Iterable[LabelInput]) -> AsyncIt
             result = await asyncio.to_thread(_process_label, label)
         job.results[index] = result
         job.completed += 1
+        store.save_job(job)
         await queue.put(BatchProgress(job_id=job_id, completed=job.completed, total=job.total, latest=result))
 
     async def _run_all() -> None:
@@ -65,6 +67,7 @@ async def start_batch(job_id: str, label_pairs: Iterable[LabelInput]) -> AsyncIt
             await asyncio.gather(*(_worker(i, label) for i, label in enumerate(labels)))
         finally:
             job.state = JobState.COMPLETED
+            store.save_job(job)
             await queue.put(_DONE)
 
     runner = asyncio.create_task(_run_all())
