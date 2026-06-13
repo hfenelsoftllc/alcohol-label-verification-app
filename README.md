@@ -77,7 +77,9 @@ for the full firewall allowlist and air-gapped setup.
 ├── docs/        # Architecture (ADR-001), FedRAMP package, guides
 ├── tests/       # Integration & load tests
 ├── .github/     # CODEOWNERS + CI workflows
-└── docker-compose.yml
+├── docker-compose.yml
+├── vercel.json       # Vercel "Services" config (frontend + backend as one project)
+└── .vercelignore     # Files excluded from the Vercel deployment bundle
 ```
 
 Each top-level directory has its own `README.md` describing its contents.
@@ -102,9 +104,9 @@ gitignored and never committed.
 | `SESSION_TTL_HOURS` | In-memory session/job expiry, in hours; also the session cookie's `Max-Age` | `4` |
 | `SESSION_SECRET_KEY` | HMAC key for signing session cookies. Leave blank for a single instance; set explicitly (e.g. `openssl rand -hex 32`) when running multiple backend instances behind a load balancer | random per-process |
 | `MAX_IMAGE_MB` | Maximum size of a single uploaded label image, in MB | `20` |
-| `MAX_BATCH_MB` | Maximum cumulative image size for one `/verify/batch` request, in MB | `500` |
+| `MAX_BATCH_MB` | Maximum cumulative image size for one `/verify/batch` request, in MB. On Vercel, lower this (e.g. `4`) to stay under the platform's request body size limit | `500` |
 | `BATCH_MAX_WORKERS` | Labels processed concurrently within a single batch job | `10` |
-| `REDIS_URL` | Optional Redis cache URL (`redis://redis:6379/0` with `--profile with-redis`). Blank uses the in-process dict store | _(empty)_ |
+| `REDIS_URL` | Optional Redis URL (`redis://redis:6379/0` with `--profile with-redis`) for cross-invocation session/job storage. Blank uses the in-process dict store — fine for Docker/local (one long-lived instance), but **required on Vercel** (`rediss://...` from the Upstash Marketplace integration), where each request may hit a different serverless instance | _(empty)_ |
 | `VITE_API_URL` | Base URL the frontend SPA calls, baked in at build time. Default `/api` is reverse-proxied to the backend by nginx (same-origin, no CORS) | `/api` |
 | `FRONTEND_PORT` | Host port mapped to the frontend container | `3000` |
 | `BACKEND_PORT` | Host port mapped to the backend container | `8000` |
@@ -164,6 +166,46 @@ RapidFuzz matching · asyncio batch orchestration · Docker Compose.
 For production-style deployments — network/firewall requirements, Docker
 installation, air-gapped operation, and how to update a running instance — see
 [`docs/DEPLOYMENT-GUIDE.md`](docs/DEPLOYMENT-GUIDE.md).
+
+### Vercel (hosted demo)
+
+A hosted demo also runs on [Vercel](https://vercel.com), as a single project
+using [Vercel "Services"](https://vercel.com/docs/multi-tenant/services) to
+deploy the Vite frontend and the FastAPI backend together under one domain:
+
+**Live demo:** <https://alcohol-label-verification-app-ivory.vercel.app/>
+
+How it's wired up:
+
+- [`vercel.json`](vercel.json) declares two services: `frontend` (Vite,
+  routed at `/`) and `backend` (FastAPI, routed at `/api`). Vercel strips the
+  `/api` prefix before invoking the backend function, so
+  `backend/app/main.py`'s routes (`/health`, `/verify`, `/jobs/...`) stay
+  unprefixed — the same as behind nginx in Docker Compose.
+- Each request can land on a different serverless instance, so the session
+  and batch-job stores (`backend/app/session.py`, `backend/batch/store.py`)
+  are backed by Redis whenever `REDIS_URL` is set. With `REDIS_URL` unset
+  (Docker/local/tests), they fall back to the original in-process dict
+  stores, unchanged.
+- [`.vercelignore`](.vercelignore) excludes dev/test files (`backend/.venv`,
+  `backend/tests`, `frontend/node_modules`, etc.) from the deployment bundle.
+
+To deploy your own copy:
+
+1. [Install the Vercel CLI](https://vercel.com/docs/cli) and run `vercel link`
+   from the repo root.
+2. In the Vercel dashboard, set the project's **Framework Preset** to
+   **Services** — required for `experimentalServices` in `vercel.json` to
+   take effect.
+3. Add the **Upstash Redis** integration from the Vercel Marketplace and copy
+   its `rediss://...` connection string.
+4. Set project environment variables (`vercel env add <NAME> <environment>`):
+   `REDIS_URL` (from step 3), `ANTHROPIC_API_KEY`, `SESSION_SECRET_KEY`
+   (`openssl rand -hex 32`), `OCR_MODE=auto`, and `MAX_BATCH_MB=4`.
+5. `vercel deploy --prod` (omit `--prod` for a preview deployment).
+
+Smoke-test with `GET /api/health` — it should return
+`{"status":"ok","version":"..."}`.
 
 ## FedRAMP Documentation
 
