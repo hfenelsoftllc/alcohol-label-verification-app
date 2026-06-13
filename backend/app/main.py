@@ -10,7 +10,6 @@ OpenAPI docs are auto-generated at /docs.
 from __future__ import annotations
 
 import logging
-import os
 import time
 import uuid
 
@@ -138,17 +137,3 @@ def health() -> HealthResponse:
 
 app.include_router(verify.router)
 app.include_router(jobs.router)
-
-
-#: Vercel "Services" routes requests to this backend with its routePrefix
-#: (/api) still in the path; Starlette's Mount strips it before delegating to
-#: the unprefixed routes above. Unset for Docker/local/tests, where nginx (or
-#: nothing) already presents routes without a prefix.
-_API_ROUTE_PREFIX = os.getenv("API_ROUTE_PREFIX")
-
-if _API_ROUTE_PREFIX:
-    from starlette.applications import Starlette
-    from starlette.routing import Mount
-
-    _fastapi_app = app
-    app = Starlette(routes=[Mount(_API_ROUTE_PREFIX, app=_fastapi_app)])

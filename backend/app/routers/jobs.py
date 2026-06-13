@@ -281,6 +281,7 @@ async def _stream_progress(job: store.Job) -> AsyncIterator[str]:
         labels, job.labels = job.labels, []
         async for progress in start_batch(job.job_id, labels):
             yield _progress_event(progress)
+        job = store.get_job(job.job_id) or job
     else:
         seen: set[int] = set()
         while True:

@@ -91,5 +91,6 @@ async def verify_batch(
         store.LabelInput(image_bytes=image_bytes, application_data=app_data, filename=image.filename)
         for image, image_bytes, app_data in zip(images, images_bytes, application_rows, strict=True)
     ]
+    store.save_job(job)
 
     return BatchSubmitResponse(job_id=job.job_id, state=job.state, total=job.total)
