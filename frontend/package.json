@@ -11,11 +11,16 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@emnapi/core": "^1.11.3",
+    "@emnapi/runtime": "^1.11.3",
+    "@emnapi/wasi-threads": "^1.2.3",
+    "@napi-rs/wasm-runtime": "^1.2.4",
+    "@tybys/wasm-util": "^0.10.4",
     "@vercel/analytics": "^2.0.1",
     "jszip": "^3.10.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "react-router-dom": "6.30.6"
+    "react-router-dom": "7.18.4"
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.3.0",
