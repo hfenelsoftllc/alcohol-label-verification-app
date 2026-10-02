@@ -5,7 +5,7 @@
 #
 # Base image is digest-pinned for a reproducible baseline (FedRAMP CM-2).
 # To update: docker pull python:3.11-slim && re-pin the new sha256 below.
-FROM python:3.11-slim@sha256:a3ab0b966bc4e91546a033e22093cb840908979487a9fc0e6e38295747e49ac0
+FROM python:3.11-slim@sha256:9f6ef439f51f4b36dc5c6bb265c2d3dd810bde94c5bbec77ae86b6650c488cf9
 
 # Tesseract OCR engine — the local fallback when the Claude Vision API is
 # unreachable (firewalled / air-gapped operation). tesseract-ocr pulls the
