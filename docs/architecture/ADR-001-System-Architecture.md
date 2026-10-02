@@ -22,7 +22,7 @@ The TTB (Alcohol and Tobacco Tax and Trade Bureau) currently employs 47 human re
 
 ## Decision
 
-Build a **containerized, single-node web application** with a React frontend, a Python FastAPI backend, a local vision/OCR engine (Claude Vision via whitelisted endpoint or local Tesseract fallback), and an in-memory processing pipeline. No external database. No persistent image storage.
+Build a **containerized, single-node web application** with a React frontend, a Python FastAPI backend, a local vision/OCR engine (Claude Vision via whitelisted endpoint or local Tesseract fallback), and an in-memory processing pipeline. No external database. No persistent image storage. (See "Update — Serverless Deployment Target" below for how this holds for the single-Docker-host deployment this ADR governs, and how a since-added Redis option serves a different deployment target.)
 
 ---
 
@@ -81,6 +81,45 @@ The firewall constraint eliminates pure cloud solutions. A fully local Tesseract
 
 ---
 
+## Update — Serverless Deployment Target (Vercel)
+
+This ADR's original decision assumed a single, long-lived process (one Docker container),
+so "in-memory" and "no external database" meant the same thing: state lived in one process's
+memory and nowhere else. As built, the session and batch-job stores (`backend/app/session.py`,
+`backend/batch/store.py`) were made **dual-backed** (ISSUE 3.7/3.1) to also support a
+project the original PoC didn't target: a **public Vercel-hosted demo** of this same codebase
+(see the root [`README.md`](../../README.md#vercel-hosted-demo)), where each HTTP request may
+be handled by a different, stateless serverless function instance with no shared process
+memory. A plain Python dict can't survive that — Redis (specifically, the Upstash Marketplace
+integration, connected over TLS) does, acting as the shared memory the in-process dict used to
+be.
+
+This does **not** change the original decision for the deployment ADR-001 actually governs —
+the TTB-operated, single-Docker-host deployment (`docs/DEPLOYMENT-GUIDE.md`,
+`docs/fedramp/SSP-final.md` §4):
+
+- `REDIS_URL` remains unset by default; the dict store behaves exactly as originally designed.
+- If an operator does enable Redis there (`docker compose --profile with-redis up`), the
+  container runs on the *same host*, inside the same trust boundary — not an external
+  database in the sense this ADR and the FedRAMP documentation use that term. Same data
+  types, same `SESSION_TTL_HOURS`-bound retention, no disk volume.
+- Only the separate Vercel demo *requires* Redis, and only there is it an external
+  (Upstash-hosted) service.
+
+One further consequence of the dual-backed design: if Redis is configured but becomes
+unreachable, an unguarded failure there would take down every request — which is exactly what
+happened in a production incident on the Vercel demo (every request, including `/health`,
+started 500ing). The fix (ISSUE 4.8) catches that failure and falls back to the in-memory
+dict for the affected request, trading session/job continuity during the outage for the
+system staying up at all — consistent with this ADR's original fail-open philosophy
+("if IT cannot whitelist the API endpoint, OCR quality degrades but the system still
+functions") applied to the storage layer instead of the OCR layer.
+
+See `docs/fedramp/DATA-FLOW-final.md` §3 (trust boundary TB-4) and
+`docs/fedramp/SESSION-MANAGEMENT.md` for the full technical and compliance treatment.
+
+---
+
 ## Technology Stack
 
 | Layer | Technology | Rationale |
@@ -90,7 +129,7 @@ The firewall constraint eliminates pure cloud solutions. A fully local Tesseract
 | Vision / OCR | Claude Vision API (primary) + Tesseract (fallback) | Best accuracy with local safety net |
 | Matching Engine | RapidFuzz (Python) | Industry-standard fuzzy matching, MIT license |
 | Batch Orchestrator | Python asyncio + concurrent.futures | Parallel label processing without external queue |
-| In-Memory Cache | Python dict / Redis (optional) | Ephemeral result storage for session |
+| Session/Job Cache | Python dict (default) / Redis (required for serverless, optional otherwise) | Ephemeral, TTL-bound result storage — see "Update" below |
 | Containerization | Docker + Docker Compose | Single-command deployment |
 
 ---

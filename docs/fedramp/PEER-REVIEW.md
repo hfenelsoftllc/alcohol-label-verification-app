@@ -279,3 +279,33 @@ proposed. Findings A, B, C, D, E, and F are documentation-accuracy and
 cross-document-consistency corrections that the documentation owner should apply to
 `SSP-final.md`, `DATA-FLOW-final.md`, and `SAST-RESULTS.md` directly (this reviewer has
 made no edits to any reviewed document, per the review's scope).
+
+---
+
+## 6. Addendum (2026-10-02) — Finding D's premise has changed
+
+**This section is appended after the fact; §1-5 above are preserved unedited as the
+original, point-in-time review.**
+
+Finding D's verification step (`grep` of `backend/app/`, `backend/ocr/`, `backend/batch/`,
+`backend/matching/` for `redis`/`REDIS_URL`, zero matches) was accurate *at the time of
+this review*. Since then, `backend/app/session.py` and `backend/batch/store.py` were made
+dual-backed (ISSUE 3.7/3.1) to support a separate, out-of-scope Vercel-hosted demo of this
+codebase, where `REDIS_URL` is required (each serverless request may hit a different
+instance with no shared memory) — and later hardened to fall back to the in-memory store
+if that Redis connection fails (ISSUE 4.8), after an unguarded failure there caused a
+production outage on that demo.
+
+Finding D's own recommendation — "add a one-line note in §4/§7 explicitly stating [Redis]
+is out of scope / disabled by default and not part of the authorized boundary" — has now
+been applied, in a more complete form than originally anticipated: `SSP-final.md` §4/§7/§8
+and `DATA-FLOW-final.md` §3 (new trust boundary **TB-4**) now document that Redis is
+actively used by the application code, that it is same-host/in-boundary (not external) for
+the authorized Docker/on-prem deployment this SSP covers, and that only the separate,
+out-of-scope Vercel demo depends on an external Redis (Upstash). The underlying SI-12/SC-28
+conclusions (ephemeral, TTL-bound, no disk persistence) are unchanged — only the "Redis is
+unwired" premise no longer holds.
+
+No new POA&M entry is proposed for this either: it is a documentation-accuracy correction
+driven by application code that evolved after this review, not a newly discovered control
+gap.

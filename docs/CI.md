@@ -18,6 +18,18 @@ SAST/scan results are uploaded to the **GitHub Security tab** in SARIF format
 (Bandit and Trivy). To suppress a Trivy finding, add a justified entry to
 [`.trivyignore`](../.trivyignore).
 
+### Redis service container (Backend job)
+
+The **Backend** job also runs a digest-pinned `redis:7-alpine` service container,
+reachable at `localhost:6379`, for `backend/tests/test_redis_integration.py` — tests
+exercising a **real** Redis connection (not a mock), including a genuine connection
+failure, to verify the fallback behavior added in ISSUE 4.8. It's wired up via
+`TEST_REDIS_URL`, set only as a step-level env var for `pytest`, deliberately **not**
+`REDIS_URL` — the latter would switch every other test over to Redis for the whole job,
+which breaks several existing tests that simulate TTL expiry by mutating a session/job
+object directly (only valid against the in-memory store). See that test file's docstring
+and the root [`README.md`](../README.md#tests) for how to run it locally.
+
 ### Bootstrap behavior
 
 The backend, frontend, and docker jobs detect whether their part of the monorepo

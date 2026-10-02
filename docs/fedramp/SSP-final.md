@@ -155,6 +155,13 @@ flowchart TB
 | **Match results** | Per-field `FieldComparison` (status, score), `GovernmentWarningCheck`, `overall_status`, image quality score | Business-sensitive | Indirect — field comparisons reference `name_address` extracted/expected values | In-memory job store (`backend/batch/store.py`), bounded by `SESSION_TTL_HOURS` (default 4h, ISSUE 3.5, SI-12); exportable as CSV/XLSX by the reviewer (`/jobs/{id}/export`) | Matching engine (`backend/matching/`) → `/jobs/{id}/status\|results\|export` |
 | **Audit/operational logs** | Structured JSON events: `timestamp`, `request_id`, `endpoint`, `method`, `status_code`, `duration_ms`, `session_id`, `ocr_engine_used`, `overall_status`, `confidence_score`, error `error`/`message` | Low — **no PII by design** | No (see §6) | Written to **stdout only**; retained per the hosting platform's container log driver (AU-9) | All endpoints (`backend/app/audit.py`, ISSUE 2.7) |
 
+"In-memory" in the table above is the default for the authorized Docker/on-prem deployment
+(§4): a single long-lived backend process, state never written to disk, reaped after
+`SESSION_TTL_HOURS`. The same two stores (`backend/app/session.py`, `backend/batch/store.py`)
+also support an optional Redis backing store (ISSUE 3.7/3.1, hardened against connection
+failure by ISSUE 4.8) — see §7 for when that applies and why it does not change the data types,
+sensitivity, or retention behavior described above.
+
 The finalized end-to-end data flow diagram, with confirmed endpoint URLs and encryption
 posture, is [`DATA-FLOW-final.md`](./DATA-FLOW-final.md) (ISSUE 1.7 → 4.5).
 
@@ -177,7 +184,13 @@ posture, is [`DATA-FLOW-final.md`](./DATA-FLOW-final.md) (ISSUE 1.7 → 4.5).
     until the reviewer retrieves/exports them or the session TTL (`SESSION_TTL_HOURS`, default
     4 hours) expires — **enforced** by `backend/batch/store.py::_reap_expired`, which drops
     idle jobs and emits a `session_expired` audit event (ISSUE 3.5, SI-12 — see §8).
-  - There is no database, no object storage, and no third-party analytics/telemetry.
+  - There is no disk-backed database or object storage, in either deployment described in §7.
+    The authorized Docker/on-prem deployment (§4) additionally has an **optional**, same-host
+    Redis container it may use in place of the in-memory dict, with identical data types,
+    sensitivity, and TTL-bound retention — see §7 for why this does not introduce a new
+    interconnection. (The project's separate, out-of-scope Vercel hosted demo also uses
+    `@vercel/analytics` for anonymous page-view telemetry; this is not present in the
+    TTB-operated deployment this SSP covers.)
 
 - **Audit logs never contain PII (AU-9):** the structured audit logging module
   (`backend/app/audit.py`, ISSUE 2.7) exposes one helper function per event type, each with an
@@ -204,7 +217,7 @@ posture, is [`DATA-FLOW-final.md`](./DATA-FLOW-final.md) (ISSUE 1.7 → 4.5).
 |---|---|---|---|---|---|
 | **Claude Vision API** (`api.anthropic.com`) | Outbound, backend → external | HTTPS (TLS 1.2+), via the `anthropic` Python SDK | Primary OCR/vision extraction for higher accuracy | Label image bytes (base64) + extraction prompt → structured field JSON response. No persistent connection; one request per label. | **Conditional** — only when `OCR_MODE` is not `local` (e.g. `auto`) **and** `ANTHROPIC_API_KEY` is set. Single whitelisted endpoint (SA-9). Network or rate-limit failure (`APITimeoutError`/`APIConnectionError`/`RateLimitError`/`TimeoutError`/`ConnectionError`) fails over immediately to local Tesseract — no retries. |
 | **Local Tesseract OCR** | In-process / local binary | N/A (no network) | Fallback (or sole, when `OCR_MODE=local`) OCR extraction in air-gapped environments | Label image bytes → raw OCR text → parsed fields | **Always available** — bundled in the backend container image (`docker/backend.Dockerfile`). |
-| Database / object storage | — | — | — | — | **None.** No external data store of any kind. |
+| Database / object storage | — | — | — | — | **None** external to the authorization boundary. The optional, same-host Redis container (below) is an in-boundary process, not an external interconnection. |
 | Reviewer ↔ Frontend | Inbound | HTTPS (TB-0) | Web UI | Label images, application data, results, signed session cookie | Ingress TLS termination is provided by the hosting GSS (inherited control, AC-17/SC-8). |
 | Frontend ↔ Backend | Internal (TB-1) | **Internal HTTP** (not TLS) via nginx reverse proxy, same-origin `/api/*`, Docker Compose bridge network | API calls | Same payloads as above | No CORS exposure — same-origin only (`docker/frontend.Dockerfile`, nginx config). Internal-only traffic; SC-8's external-transmission requirement does not apply (see [`DATA-FLOW-final.md`](./DATA-FLOW-final.md) §6). |
 
@@ -212,10 +225,29 @@ No other external systems, APIs, or services are integrated. The legacy .NET COL
 explicitly **not** integrated in this PoC (per ADR-001 constraints).
 
 The optional `docker-compose.yml` `with-redis` profile (`docker compose --profile with-redis
-up`) provisions a `redis:7-alpine` container and sets `REDIS_URL` in the backend environment;
-as of this release no backend code reads `REDIS_URL` or connects to Redis, so enabling this
-profile introduces **no** additional interconnection, data flow, or attack surface. It is
-reserved for a future shared job-store backend.
+up`) provisions a `redis:7-alpine` container on the same Docker Compose bridge network as the
+backend, and `backend/app/session.py`/`backend/batch/store.py` use it in place of the in-memory
+dict whenever `REDIS_URL` is set (ISSUE 3.7/3.1). Because the Redis container runs on the same
+TTB-operated host, inside the authorization boundary shown in §4 — not across a network boundary
+to an external system — this introduces **no new external interconnection or attack surface**:
+the data types, sensitivity, and `SESSION_TTL_HOURS`-bound retention are identical to the
+in-memory store it replaces (§5), and Redis adds no disk persistence of its own (`redis:7-alpine`
+is run with no volume mount). If the backend loses its connection to Redis (container restart,
+network blip), `session.create`/`validate_cookie` and `batch.store.save_job`/`get_job` catch the
+failure and fall back to the in-memory store for that request rather than raising (ISSUE 4.8,
+`backend/tests/test_redis_fallback.py`, `test_redis_integration.py`).
+
+**Out of scope for this SSP, documented for traceability:** the project also runs a public
+Vercel-hosted demo (see the root [`README.md`](../../README.md#vercel-hosted-demo)) that is
+**not** part of the TTB-operated authorization boundary in §4 — it is a separate, publicly
+reachable deployment used only to showcase the PoC. There, `REDIS_URL` is **required**, not
+optional, and points to an external managed Redis (Upstash, over `rediss://` TLS) rather than a
+same-host container, because each serverless request may be handled by a different stateless
+function instance with no shared process memory. The data stored is identical in kind, shape,
+and TTL to the in-memory/same-host-Redis cases above; only the network location of the store
+differs. Anyone standing up an actual TTB-operated instance of ALVA should use the Docker
+Compose deployment path (`docs/DEPLOYMENT-GUIDE.md`) that this SSP describes, not the Vercel
+demo configuration.
 
 ---
 
@@ -266,9 +298,9 @@ item, T-D2, surfaced by [`THREAT-MODEL.md`](./THREAT-MODEL.md)).
 
 | Control | Name | Status | Implementation Notes |
 |---|---|---|---|
-| SC-8 | Transmission Confidentiality and Integrity | **Implemented** | The `anthropic` SDK uses HTTPS (TLS 1.2+) for the Claude Vision call (§7); reviewer-facing HTTPS and ingress TLS termination are inherited from the hosting GSS. The internal frontend↔backend hop (TB-1) is plain HTTP but never leaves the authorization boundary (§4, [`DATA-FLOW-final.md`](./DATA-FLOW-final.md) §6). |
+| SC-8 | Transmission Confidentiality and Integrity | **Implemented** | The `anthropic` SDK uses HTTPS (TLS 1.2+) for the Claude Vision call (§7); reviewer-facing HTTPS and ingress TLS termination are inherited from the hosting GSS. The internal frontend↔backend hop (TB-1) is plain HTTP but never leaves the authorization boundary (§4, [`DATA-FLOW-final.md`](./DATA-FLOW-final.md) §6). The optional same-host Redis connection (§7) is also internal-only (same Docker bridge network); the out-of-scope Vercel demo's external Redis (Upstash) connection uses `rediss://` (TLS). |
 | SC-23 | Session Authenticity | **Implemented** (ISSUE 3.7) | The session-id cookie is HttpOnly, Secure, SameSite=Strict, HMAC-SHA256-signed, and expires (`Max-Age`) in lockstep with the server-side session TTL. See [`SESSION-MANAGEMENT.md`](./SESSION-MANAGEMENT.md). |
-| SC-28 | Protection of Information at Rest | **Implemented** | No disk writes of label images, application data, extracted fields, or match results anywhere in `backend/app`/`backend/ocr`/`backend/matching` — confirmed by code review; all state lives in `backend/batch/store.py`'s in-memory dict. |
+| SC-28 | Protection of Information at Rest | **Implemented** | No disk writes of label images, application data, extracted fields, or match results anywhere in `backend/app`/`backend/ocr`/`backend/matching` — confirmed by code review. State lives in `backend/batch/store.py`'s/`backend/app/session.py`'s in-memory dict by default, or — only when `REDIS_URL` is explicitly configured — an equivalent, `SESSION_TTL_HOURS`-bound Redis key space (`redis:7-alpine` run with no volume mount, so no disk persistence there either). Both backings hold the same data types (§5) and are reaped identically (§SI-12). |
 
 ### SI — System and Information Integrity
 
@@ -278,9 +310,9 @@ item, T-D2, surfaced by [`THREAT-MODEL.md`](./THREAT-MODEL.md)).
 | SI-7 | Software, Firmware, and Information Integrity | **Implemented** (ISSUE 2.5) | `backend/matching/exact_validator.py` performs a word-for-word, ALL-CAPS-prefix exact match of the Government Warning text against the application data. |
 | SI-10 | Information Input Validation | **Implemented** (ISSUE 3.6, 4.1) | All API I/O is typed via Pydantic models (`backend/app/models.py` — no untyped dicts cross the API boundary, `ApplicationData` strips whitespace via `str_strip_whitespace=True` and enforces per-field `max_length`); both `/verify` and `/verify/batch` validate every image by magic-byte signature and size, not declared Content-Type (`backend/app/validation.py`, HTTP 413/415); `application_csv` rejects missing or unrecognized column names (`backend/batch/csv_input.py`, HTTP 422); a 20+ case fuzz suite (`backend/tests/test_input_validation.py`) confirms malformed input never produces a 5xx. Before OCR, `backend/ocr/preprocessor.py` deskews, denoises, sharpens, and contrast-enhances a copy of each label image (`getRotationMatrix2D`, `fastNlMeansDenoisingColored`, `equalizeHist`) when its quality score is <= 80, normalizing malformed/degraded input image data within a 0.5s budget; pre-processing never raises and degrades back to the original bytes on any failure. See [`PREPROCESSING-AB-TEST.md`](./PREPROCESSING-AB-TEST.md) for a 20-sample before/after quality comparison. |
 | SI-11 | Error Handling | **Implemented** | A uniform `ErrorResponse{error, message, request_id}` envelope is returned for all HTTP and validation errors (`backend/app/main.py`), and every error response also emits a `request_error` audit event (§AU-3). |
-| SI-12 | Information Management and Retention | **Implemented** (ISSUE 3.5) | `SESSION_TTL_HOURS` (default 4h, `.env.example`/`docker-compose.yml`) bounds every batch job: `backend/batch/store.py::_reap_expired` drops any job idle longer than the TTL and emits `audit.log_session_expired()` for it (also triggered lazily from `get_job` on access). Verified by `backend/tests/test_session_store.py`. The same `SESSION_TTL_HOURS` also bounds the authenticated browser session itself, via the independent `backend/app/session.py::_reap_expired` (SC-23/IA-2, see §AU-2). |
+| SI-12 | Information Management and Retention | **Implemented** (ISSUE 3.5) | `SESSION_TTL_HOURS` (default 4h, `.env.example`/`docker-compose.yml`) bounds every batch job: `backend/batch/store.py::_reap_expired` drops any job idle longer than the TTL and emits `audit.log_session_expired()` for it (also triggered lazily from `get_job` on access). Verified by `backend/tests/test_session_store.py`. The same `SESSION_TTL_HOURS` also bounds the authenticated browser session itself, via the independent `backend/app/session.py::_reap_expired` (SC-23/IA-2, see §AU-2). When the optional Redis backing is in use (§7), retention is instead enforced natively by Redis's own key TTL (`SETEX`, same `SESSION_TTL_HOURS` value) — functionally equivalent for retention purposes, but **note for the ISSO:** a Redis-native expiry does not emit a `session_expired` audit event (`backend/batch/store.py::get_job`/`backend/app/session.py::validate_cookie` simply get a cache miss and return "not found," with no code path "awake" to log the expiry) — unlike the in-memory backing, where the explicit `_reap_expired` sweep always logs it. The retention guarantee (AC4/data is gone after the TTL) holds identically either way; only the audit-trail completeness for *why* a given lookup came back empty differs between the two backings. |
 | SI-16 | Memory Protection | **Implemented** (ISSUE 3.6) | Per-image (`MAX_IMAGE_MB`, default 20MB) and per-batch (`MAX_BATCH_MB`, default 500MB) size limits are enforced before any image is processed (`backend/app/validation.py`, HTTP 413), bounding worker memory regardless of client-supplied input. |
-| SI-17 | Fail-Safe Procedures | **Implemented** (ISSUE 4.4) | A catch-all `Exception` handler in `backend/app/main.py` guarantees every unhandled error still returns the `ErrorResponse{error, message, request_id}` envelope (§SI-11) rather than a raw stack trace. The OCR/matching pipeline is consolidated into `backend/app/pipeline.py::run_verification()`, shared by `/verify` and `/verify/batch`: an unreadable image (`assess_image_quality` issues == `["unreadable"]`) returns `overall_status: "ERROR"` with the plain-language message "Image quality too low to extract any fields" instead of crashing (AC3); any other pipeline exception (OCR, matching, or warning validation) is caught and returns `overall_status: "ERROR"` with a plain-language message, never a stack trace (AC7). In a batch, `backend/batch/orchestrator.py` isolates each label's failure to its own result — the remaining labels continue processing (AC4). On the frontend, `frontend/src/components/ErrorBoundary.jsx` catches any render error and displays the heading "Something went wrong" with the message "Your session is still active. You can return to the start and try again." and a "Return to start" recovery control (AC5, covered by `frontend/src/__tests__/errorBoundary.test.jsx`), and `frontend/src/hooks/useJobStream.js` surfaces the native `EventSource` connection-drop/reconnect transitions as a `reconnecting` state, rendered by `BatchPage.jsx` as a "Reconnecting…" status message (AC6). |
+| SI-17 | Fail-Safe Procedures | **Implemented** (ISSUE 4.4) | A catch-all `Exception` handler in `backend/app/main.py` guarantees every unhandled error still returns the `ErrorResponse{error, message, request_id}` envelope (§SI-11) rather than a raw stack trace. The OCR/matching pipeline is consolidated into `backend/app/pipeline.py::run_verification()`, shared by `/verify` and `/verify/batch`: an unreadable image (`assess_image_quality` issues == `["unreadable"]`) returns `overall_status: "ERROR"` with the plain-language message "Image quality too low to extract any fields" instead of crashing (AC3); any other pipeline exception (OCR, matching, or warning validation) is caught and returns `overall_status: "ERROR"` with a plain-language message, never a stack trace (AC7). In a batch, `backend/batch/orchestrator.py` isolates each label's failure to its own result — the remaining labels continue processing (AC4). On the frontend, `frontend/src/components/ErrorBoundary.jsx` catches any render error and displays the heading "Something went wrong" with the message "Your session is still active. You can return to the start and try again." and a "Return to start" recovery control (AC5, covered by `frontend/src/__tests__/errorBoundary.test.jsx`), and `frontend/src/hooks/useJobStream.js` surfaces the native `EventSource` connection-drop/reconnect transitions as a `reconnecting` state, rendered by `BatchPage.jsx` as a "Reconnecting…" status message (AC6). When the optional Redis backing (§7) is configured but unreachable, `backend/app/session.py::create`/`validate_cookie` and `backend/batch/store.py::save_job`/`get_job` catch the connection failure and fall back to the in-memory store for that request rather than raising (ISSUE 4.8) — the fix for a production incident on the out-of-scope Vercel demo where an unreachable Redis took down every request, including `/health`; `backend/tests/test_redis_fallback.py` and `test_redis_integration.py` (the latter against a real, intentionally-unreachable Redis connection) verify the fallback. |
 
 ### CP — Contingency Planning
 
@@ -307,7 +339,7 @@ item, T-D2, surfaced by [`THREAT-MODEL.md`](./THREAT-MODEL.md)).
 
 | Control | Name | Status | Implementation Notes |
 |---|---|---|---|
-| SA-9 | External System Services | **Implemented** | The Claude Vision API (§7) is the only external service ALVA depends on, and it is optional: explicitly whitelisted, gated by `OCR_MODE`/`ANTHROPIC_API_KEY`, with automatic fail-over to local Tesseract — the system remains fully functional with zero external services when `OCR_MODE=local` (air-gapped). |
+| SA-9 | External System Services | **Implemented** | The Claude Vision API (§7) is the only external service the authorized Docker/on-prem deployment depends on, and it is optional: explicitly whitelisted, gated by `OCR_MODE`/`ANTHROPIC_API_KEY`, with automatic fail-over to local Tesseract — the system remains fully functional with zero external services when `OCR_MODE=local` (air-gapped). The optional Redis backing (§7) is same-host, not external, in this deployment. (The out-of-scope Vercel hosted demo additionally depends on an external managed Redis — Upstash — required there because serverless functions share no process memory; this does not apply to the TTB-operated deployment this SSP covers.) |
 | SA-11 | Developer Testing and Evaluation | **Implemented** | Every PR runs the backend pytest suite, the frontend vitest + jest-axe accessibility suite, bandit SAST, eslint-plugin-security, pip-audit, and npm audit (`.github/workflows/ci.yml`), gated by the required `CI Success` status check on `main`. |
 
 ### CA — Security Assessment and Authorization
