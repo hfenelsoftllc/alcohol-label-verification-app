@@ -22,7 +22,6 @@ import logging
 import cv2
 import numpy as np
 
-from ocr import skew
 from ocr.quality import decode_image
 
 logger = logging.getLogger(__name__)
@@ -100,7 +99,10 @@ def _deskew(image: np.ndarray) -> np.ndarray:
     angle = _estimate_skew_angle(image)
     if abs(angle) < _MIN_SKEW_ANGLE:
         return image.copy()
-    return skew.rotate(image, angle)
+
+    height, width = image.shape[:2]
+    matrix = cv2.getRotationMatrix2D((width / 2, height / 2), angle, 1.0)
+    return cv2.warpAffine(image, matrix, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
 
 
 def _estimate_skew_angle(image: np.ndarray) -> float:
@@ -110,7 +112,21 @@ def _estimate_skew_angle(image: np.ndarray) -> float:
     or fully-uniform image can't meaningfully be deskewed).
     """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    return skew.estimate_angle(gray)
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return 0.0
+
+    largest = max(contours, key=cv2.contourArea)
+    area = cv2.contourArea(largest)
+    total_area = gray.shape[0] * gray.shape[1]
+    if area < 0.01 * total_area or area > 0.98 * total_area:
+        return 0.0
+
+    angle = cv2.minAreaRect(largest)[-1]
+    if angle < -45:
+        angle += 90
+    return angle
 
 
 def _denoise(image: np.ndarray) -> np.ndarray:
