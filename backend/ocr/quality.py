@@ -22,6 +22,7 @@ import numpy as np
 from PIL import Image, UnidentifiedImageError
 
 from app.models import ImageQualityReport
+from ocr import skew
 
 #: Below this width or height (px), an image is flagged "low_resolution".
 _MIN_DIMENSION = 600
@@ -130,31 +131,14 @@ def _estimate_skew_angle(gray: np.ndarray) -> float:
     Returns 0.0 if no contour is large enough to represent the label (a tiny or
     fully-uniform image can't meaningfully be deskewed).
     """
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return 0.0
-
-    largest = max(contours, key=cv2.contourArea)
-    area = cv2.contourArea(largest)
-    total_area = gray.shape[0] * gray.shape[1]
-    if area < 0.01 * total_area or area > 0.98 * total_area:
-        return 0.0
-
-    angle = cv2.minAreaRect(largest)[-1]
-    if angle < -45:
-        angle += 90
-    return angle
+    return skew.estimate_angle(gray)
 
 
 def _deskew(gray: np.ndarray, angle: float) -> np.ndarray:
     """Rotate the image to correct the estimated skew. A no-op for small angles."""
     if abs(angle) < 0.1:
         return gray
-    height, width = gray.shape[:2]
-    center = (width / 2, height / 2)
-    matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
-    return cv2.warpAffine(gray, matrix, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+    return skew.rotate(gray, angle)
 
 
 def _has_partial_obstruction(gray: np.ndarray) -> bool:
