@@ -65,9 +65,9 @@ type inventory in `SSP-final.md` §5:
 ## 3. Trust Boundaries
 
 The authorization boundary is the **single Docker host** described in `SSP-final.md` §4
-(the `alvf-frontend` and `alvf-backend` containers, plus the bundled Tesseract binary —
-no database, no object storage). Four trust boundaries (TB-0 .. TB-3) are crossed by data
-in this system:
+(the `alvf-frontend` and `alvf-backend` containers, the bundled Tesseract binary, and an
+optional same-host Redis container — no database or object storage external to that host).
+Five trust boundaries (TB-0 .. TB-4) are crossed by data in this system:
 
 | ID | Boundary | Internal / External | Transport | Source evidence |
 |---|---|---|---|---|
@@ -75,6 +75,7 @@ in this system:
 | **TB-1** | Frontend container ↔ Backend container | **Internal** — both containers are inside the single-host authorization boundary, on the Docker Compose bridge network | **HTTP** (`proxy_pass http://backend:8000/`), not encrypted — does not leave the authorization boundary | `docker/nginx/default.conf` lines for `location /api/ { proxy_pass http://backend:8000/; ... }` |
 | **TB-2** | Backend process ↔ local Tesseract OCR | **Internal, in-process** — not a network call at all | **None** (function call into `pytesseract`, which shells out to the bundled `tesseract-ocr` binary on the same filesystem) | `backend/ocr/adapter.py::_extract_with_tesseract` (`pytesseract.image_to_string(image)`); `docker/backend.Dockerfile` bundles `tesseract-ocr` with no network egress required |
 | **TB-3** | Backend container ↔ Claude Vision API (Anthropic) | **External** — leaves the authorization boundary to a third-party service | **HTTPS / TLS 1.2+** via the official `anthropic` Python SDK (`anthropic==0.109.1`), single whitelisted endpoint per SA-9 | `backend/ocr/adapter.py::_extract_with_claude` (`anthropic.Anthropic(api_key=..., timeout=OCR_API_TIMEOUT_SECONDS, max_retries=0)`); conditional on `OCR_MODE != "local"` and `ANTHROPIC_API_KEY` being set |
+| **TB-4** | Backend container ↔ Redis container | **Internal, optional** — both containers are inside the single-host authorization boundary, on the Docker Compose bridge network; crossed only when the operator sets `REDIS_URL` (`docker compose --profile with-redis up`) | **TCP** (`redis://redis:6379/0`), not encrypted — does not leave the authorization boundary, same as TB-1 | `backend/app/redis_client.py`; `backend/app/session.py`, `backend/batch/store.py` (ISSUE 3.7/3.1); `docker-compose.yml`'s `redis` service |
 
 **Notes:**
 
@@ -99,6 +100,18 @@ in this system:
 - **TB-0 is an inherited control**: per `SSP-final.md` §1, ALVA is a Minor Application that
   does not provision its own network perimeter or TLS termination — TB-0's HTTPS
   termination is provided by the hosting GSS ingress.
+- **TB-4 carries the same data as the in-memory store it replaces**: when crossed, TB-4 moves
+  exactly the session/job data already classified in §2 (table above) — nothing new is
+  introduced by enabling Redis. Retention is `SESSION_TTL_HOURS`-bound either way (§SI-12);
+  Redis is run with no volume mount, so it adds no disk persistence. If the backend loses its
+  connection to Redis mid-request, `backend/app/session.py`/`backend/batch/store.py` catch the
+  failure and fall back to the in-memory store rather than raising (ISSUE 4.8) — this is the fix
+  for a production incident on the project's separate, **out-of-scope** Vercel hosted demo
+  (see `SSP-final.md` §7), where an unreachable Redis took down every request. That demo differs
+  from TB-4 in one respect worth flagging for traceability: it requires an **external** managed
+  Redis (Upstash, over `rediss://` TLS) rather than a same-host container, because its
+  serverless functions share no process memory across invocations — it is not part of this
+  authorization boundary and is not a TB-4 crossing.
 
 ---
 
@@ -137,7 +150,7 @@ cross-cutting concern applied uniformly and not repeated as a separate row.
 |---|---|---|---|---|
 | 1 | Reviewer → Frontend → Backend | TB-0, then TB-1 | Multiple label images (`UploadFile[]`) + an `application_csv` (one row per image), `multipart/form-data` | Sensitive |
 | 2 | Backend → Backend (validation) | — (in-process) | `validate_upload()` per image (magic-byte/size/filename checks, `backend/app/validation.py`); `validate_batch_size()` enforces the cumulative `MAX_BATCH_MB` (default 500MB, HTTP 413, ISSUE 3.6); `application_csv` parsed by `backend/batch/csv_input.py` (rejects unknown/missing columns, HTTP 422) | Sensitive |
-| 3 | Backend → in-memory job store | — (process memory, `backend/batch/store.py`) | `store.create_job(total=len(images), session_id=...)` creates a `Job` (dataclass) keyed by a `secrets.token_urlsafe(12)` `job_id`, scoped to the requesting session's `session_id` — **no disk or database** | Internal (job metadata only at this point) |
+| 3 | Backend → job store | — (process memory, or same-host Redis if `REDIS_URL` is set — TB-4, `backend/batch/store.py`) | `store.create_job(total=len(images), session_id=...)` creates a `Job` (dataclass) keyed by a `secrets.token_urlsafe(12)` `job_id`, scoped to the requesting session's `session_id` — **no disk or external database either way** | Internal (job metadata only at this point) |
 | 4 | Backend → Frontend → Reviewer | TB-1, then TB-0 | `BatchSubmitResponse` (`job_id`, `state`, `total`) | Internal |
 | 5 | *(async orchestrator, ISSUE 3.1)* | TB-2 / TB-3 per image | `backend/batch/orchestrator.py` processes each queued image through `pipeline.run_verification()` (same steps 3–7 of §4.1, including preprocessing, ISSUE 4.1), appending a `VerificationResult` to `job.results`. A per-label exception is isolated to that label's result — the remaining labels continue processing (SI-17/AC4, ISSUE 4.4) | Sensitive → Internal |
 | 6 | Backend → Frontend → Reviewer | TB-1, then TB-0 | `GET /jobs/{job_id}/stream` — Server-Sent Events (ISSUE 3.2): the backend pushes a `BatchProgress`/`VerificationResult` event each time a label finishes, consumed via the browser's native `EventSource` (`frontend/src/hooks/useJobStream.js`), which auto-reconnects on a dropped connection and surfaces a "Reconnecting…" status (ISSUE 4.4 AC6) | Internal |
@@ -178,7 +191,7 @@ flowchart LR
         FE["Frontend container\nnginx + React SPA\n(listen :80)"]
         BE["Backend container\nFastAPI app\n(uvicorn :8000)"]
         TESS["Local Tesseract OCR\n(bundled binary,\nno network egress)"]
-        JOBS[("In-memory session/job store\nprocess dict, no disk — SI-12")]
+        JOBS[("Session/job store\nin-memory dict, or same-host Redis\nif REDIS_URL is set (TB-4) — no disk, SI-12")]
         FE -->|"TB-1: internal HTTP\nproxy_pass http://backend:8000/\nSensitive: image + ApplicationData"| BE
         BE -->|"TB-1: internal HTTP\nInternal: MatchReport/VerificationResult"| FE
         BE -->|"TB-2: in-process,\nno network\nSensitive: image bytes"| TESS
@@ -229,7 +242,7 @@ in-memory only:
 | Image preprocessing | `backend/ocr/preprocessor.py` | `maybe_preprocess` (ISSUE 4.1) operates on an in-memory OpenCV copy (deskew/denoise/sharpen/contrast) and returns bytes; never raises, degrades to original bytes on failure | None |
 | Tesseract OCR fallback | `backend/ocr/adapter.py::_extract_with_tesseract` | `Image.open(io.BytesIO(image_bytes))` passed straight to `pytesseract.image_to_string()` | None — `pytesseract` reads the in-memory PIL image; no temp files are created by this code path |
 | Claude Vision OCR | `backend/ocr/adapter.py::_extract_with_claude` | Image bytes base64-encoded in memory and sent as the request body; response parsed in memory | None |
-| Session/batch job store | `backend/batch/store.py` | Process-local `dict[str, Job]`, `Job` is a `dataclass` holding `session_id`, `results: list[VerificationResult]`, and `last_accessed`. `_reap_expired()` (ISSUE 3.5, SI-12) drops jobs idle longer than `SESSION_TTL_HOURS` | None — cleared on process restart or TTL expiry; in-memory only, not Redis/disk-backed |
+| Session/batch job store | `backend/batch/store.py`, `backend/app/session.py` | By default, a process-local `dict[str, Job]`/`dict[str, Session]`; `Job` is a `dataclass` holding `session_id`, `results: list[VerificationResult]`, and `last_accessed`. `_reap_expired()` (ISSUE 3.5, SI-12) drops entries idle longer than `SESSION_TTL_HOURS`. When `REDIS_URL` is set, the same two modules use a same-host Redis container instead (TB-4) — same data, same TTL, via Redis's native key expiry — and fall back to the in-memory dict if that connection fails mid-request (ISSUE 4.8). | None persisted to disk either way — cleared on process restart (in-memory) or TTL expiry (either backing); never Redis**-and**-disk-backed. |
 | CSV/XLSX export | `backend/app/routers/jobs.py::job_export` | `csv.writer` → `io.StringIO()` (CSV) or `openpyxl.Workbook` → `io.BytesIO()` (XLSX, ISSUE 3.5), returned directly as an HTTP response body, with formula-injection-safe cell sanitization | None |
 | Audit logs | `backend/app/audit.py` | `structlog` `PrintLoggerFactory` → stdout | Container log driver only (Operational data, no PII — §2) |
 
@@ -263,8 +276,9 @@ image bytes or extracted/application/session data**. This substantiates the **SI
 - `backend/app/pipeline.py` — consolidated OCR/quality/matching pipeline shared by
   `/verify` and `/verify/batch` (ISSUE 4.4).
 - `backend/batch/store.py`, `backend/batch/orchestrator.py`, `backend/app/routers/jobs.py` —
-  session-scoped in-memory job store, async orchestrator, CSV/XLSX export, data-at-rest
-  confirmation (SI-12).
+  session-scoped job store (in-memory or same-host Redis, TB-4), async orchestrator, CSV/XLSX
+  export, data-at-rest confirmation (SI-12).
+- `backend/app/redis_client.py` — TB-4 transport evidence (optional same-host Redis client).
 
 ---
 

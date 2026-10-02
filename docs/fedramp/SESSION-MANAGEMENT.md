@@ -43,6 +43,28 @@ This is a single, additional concept layered on top of two pre-existing
    session. Reaping logs a `session_expired` event (`app/audit.py`), the same
    event already emitted by `batch/store.py` for expired jobs.
 
+## Storage backing (ISSUE 3.7, 4.8)
+
+The store described above is a process-local `dict[str, Session]` by default — correct for
+a single long-lived instance (Docker Compose, local dev, tests). When `REDIS_URL` is set,
+`session.create()`/`validate_cookie()` use Redis instead, keyed `session:{session_id}` with
+the same `SESSION_TTL_HOURS` value passed to Redis's native `SETEX`/`EXPIRE`, so a session
+survives across requests that land on *different* backend instances — required on Vercel,
+where each request may hit a different serverless invocation with no shared process memory;
+optional on Docker (`docker compose --profile with-redis up`, same-host container, see
+`docs/fedramp/DATA-FLOW-final.md` TB-4).
+
+If Redis is configured but the connection fails (network blip, instance restart, or
+misconfiguration), `create()`/`validate_cookie()` catch `redis.exceptions.RedisError` and
+fall back to the in-memory dict for that request rather than raising (ISSUE 4.8) — the fix
+for a production incident where an unreachable Redis took down every request, including
+`/health`, because the old code called Redis unconditionally with no fallback. See
+`backend/tests/test_redis_fallback.py` (mocked failures) and `test_redis_integration.py`
+(a real, intentionally-unreachable Redis connection). The trade-off: a request served during
+a Redis outage gets its own throwaway in-memory session that the *next* request (likely a
+different invocation) won't recognize — the app stays up, but session continuity degrades
+until Redis is reachable again.
+
 ## Access enforcement (AC2/AC3)
 
 The `session_authentication` middleware gates every `/jobs/*` request:
@@ -96,16 +118,20 @@ that was never issued or has since been reaped.
 | Variable | Default | Purpose |
 |---|---|---|
 | `SESSION_TTL_HOURS` | `4` | Idle timeout for both auth sessions and batch jobs (shared, ISSUE 3.5). Also sets the cookie `Max-Age`. |
-| `SESSION_SECRET_KEY` | random per process | HMAC key for signing session-id cookies. Optional for a single instance (everything is in-memory and clears on restart); set explicitly (`openssl rand -hex 32`) if running multiple backend instances behind a load balancer, so cookies validate across all of them. |
+| `SESSION_SECRET_KEY` | random per process | HMAC key for signing session-id cookies. Optional for a single instance (everything is in-memory and clears on restart); **must** be set explicitly (`openssl rand -hex 32`) whenever multiple backend instances need to validate each other's cookies — this is the normal case whenever Redis is configured (above), since a random per-process key would make one instance reject a cookie signed by another. |
 
 ## Implementation references
 
 - `backend/app/session.py` — session store, signing, cookie helpers.
 - `backend/app/main.py` — `session_authentication` middleware.
+- `backend/app/redis_client.py` — optional Redis client shared by `session.py` and
+  `batch/store.py`.
 - `backend/batch/store.py` — `Job.session_id`.
 - `backend/app/routers/verify.py`, `backend/app/routers/jobs.py` — job
   creation and ownership enforcement.
 - `backend/tests/test_session_auth.py` — tests for AC1-AC5.
+- `backend/tests/test_redis_fallback.py`, `test_redis_integration.py` — Redis
+  storage-backing and connection-failure fallback tests (ISSUE 4.8).
 
 ## Frontend impact
 

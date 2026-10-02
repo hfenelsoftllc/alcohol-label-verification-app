@@ -8,8 +8,11 @@ word-for-word matching for the Government Warning.
 
 Designed to run in a **firewalled government environment**: it tries a whitelisted
 Claude Vision endpoint first and falls back to local Tesseract when the network is
-blocked. No database, no persistent storage — label images and extracted data are
-processed **ephemerally, in memory only**.
+blocked. No traditional database — label images and extracted data are processed
+**ephemerally and TTL-bounded**, held in memory for the default single-instance
+deployment (Docker/local), or in a short-lived Redis cache ([`REDIS_URL`](#configuration))
+for deployments where each request may land on a different instance (see
+[Architecture](#architecture) and [Vercel (hosted demo)](#vercel-hosted-demo)).
 
 > **Classification:** FedRAMP Moderate (PoC documentation package — full ATO out
 > of scope). See [`docs/fedramp/`](docs/fedramp/).
@@ -141,6 +144,20 @@ cd frontend
 npm test
 npm audit
 ```
+
+`backend/tests/test_redis_integration.py` exercises a **real** Redis connection (both the
+happy path and a genuine connection failure) instead of a mock — it's skipped unless
+`TEST_REDIS_URL` is set, so it's a no-op above unless you point it at one yourself:
+
+```bash
+docker run -d --rm -p 16379:6379 redis:7-alpine
+TEST_REDIS_URL=redis://localhost:16379/0 pytest -q backend/tests/test_redis_integration.py
+```
+
+(Deliberately not `REDIS_URL` — that variable switches the *whole* backend over to Redis for
+every test, which breaks a few existing tests that simulate TTL expiry by mutating an object
+directly; see that file's docstring.) CI provides its own Redis via a service container in
+`.github/workflows/ci.yml`, scoped the same way.
 
 Integration and load tests live in [`tests/`](tests/) — see
 [`tests/README.md`](tests/README.md) and

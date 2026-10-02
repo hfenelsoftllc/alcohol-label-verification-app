@@ -22,7 +22,7 @@ The TTB (Alcohol and Tobacco Tax and Trade Bureau) currently employs 47 human re
 
 ## Decision
 
-Build a **containerized, single-node web application** with a React frontend, a Python FastAPI backend, a local vision/OCR engine (Claude Vision via whitelisted endpoint or local Tesseract fallback), and an in-memory processing pipeline. No external database. No persistent image storage.
+Build a **containerized, single-node web application** with a React frontend, a Python FastAPI backend, a local vision/OCR engine (Claude Vision via whitelisted endpoint or local Tesseract fallback), and an in-memory processing pipeline. No external database. No persistent image storage. (See "Update — Serverless Deployment Target" below for how this holds for the single-Docker-host deployment this ADR governs, and how a since-added Redis option serves a different deployment target.)
 
 ---
 
@@ -81,6 +81,46 @@ The firewall constraint eliminates pure cloud solutions. A fully local Tesseract
 
 ---
 
+## Update — Serverless Deployment Target (Vercel)
+
+This ADR's original decision assumed a single, long-lived process (one Docker container),
+so "in-memory" and "no external database" meant the same thing: state lived in one process's
+memory and nowhere else. As built, the session and batch-job stores (`backend/app/session.py`,
+`backend/batch/store.py`) were made **dual-backed** (ISSUE 3.7/3.1) to also support a
+project the original PoC didn't target: a **public Vercel-hosted demo** of this same codebase
+(see the root [`README.md`](../../README.md#vercel-hosted-demo)), where each HTTP request may
+be handled by a different, stateless serverless function instance with no shared process
+memory. A plain Python dict can't survive that — Redis (specifically, the Upstash Marketplace
+integration, connected over TLS) does, acting as the shared memory the in-process dict used to
+be.
+
+This does **not** change the original decision for the deployment ADR-001 actually governs —
+the TTB-operated, single-Docker-host deployment (`docs/DEPLOYMENT-GUIDE.md`,
+`docs/fedramp/SSP-final.md` §4):
+
+- `REDIS_URL` remains unset by default; the dict store behaves exactly as originally designed.
+- If an operator does enable Redis there (`docker compose --profile with-redis up`), the
+  container runs on the *same host*, inside the same trust boundary — not an external
+  database in the sense this ADR and the FedRAMP documentation use that term. Same data
+  types, same `SESSION_TTL_HOURS`-bound retention, no disk volume.
+- Only the separate Vercel demo *requires* Redis, and only there is it an external
+  (Upstash-hosted) service.
+
+One further consequence of the dual-backed design: if Redis is configured but becomes
+unreachable, an unguarded failure there would take down every request — which is exactly what
+happened in a production incident on the Vercel demo (every request, including `/health`,
+started 500ing). The fix (ISSUE 4.8) catches that failure and falls back to the in-memory
+dict for the affected request, trading session/job continuity during the outage for the
+system staying up at all — consistent with this ADR's original fail-open philosophy
+("if IT cannot whitelist the API endpoint, OCR quality degrades but the system still
+functions") applied to the storage layer instead of the OCR layer.
+
+See the **Physical Architecture Diagram** below for both deployments side by side,
+`docs/fedramp/DATA-FLOW-final.md` §3 (trust boundary TB-4), and
+`docs/fedramp/SESSION-MANAGEMENT.md` for the full technical and compliance treatment.
+
+---
+
 ## Technology Stack
 
 | Layer | Technology | Rationale |
@@ -90,7 +130,7 @@ The firewall constraint eliminates pure cloud solutions. A fully local Tesseract
 | Vision / OCR | Claude Vision API (primary) + Tesseract (fallback) | Best accuracy with local safety net |
 | Matching Engine | RapidFuzz (Python) | Industry-standard fuzzy matching, MIT license |
 | Batch Orchestrator | Python asyncio + concurrent.futures | Parallel label processing without external queue |
-| In-Memory Cache | Python dict / Redis (optional) | Ephemeral result storage for session |
+| Session/Job Cache | Python dict (default) / Redis (required for serverless, optional otherwise) | Ephemeral, TTL-bound result storage — see "Update" below |
 | Containerization | Docker + Docker Compose | Single-command deployment |
 
 ---
@@ -109,9 +149,9 @@ The firewall constraint eliminates pure cloud solutions. A fully local Tesseract
 
 ---
 
-## System Architecture Diagram
+## System Architecture Diagram (Logical)
 
-> **How to read this diagram:** Follow the flow from left (User) to right (AI Engine). Each box is a component of the system. Arrows show how data moves. Color bands show which "layer" each component belongs to.
+> **How to read this diagram:** Follow the flow from left (User) to right (AI Engine). Each box is a component of the system, organized by responsibility — **not** by where it physically runs (see the **Physical Architecture Diagram** right after this one for that). Arrows show how data moves. Color bands show which "layer" each component belongs to.
 
 ```mermaid
 graph TB
@@ -134,7 +174,7 @@ graph TB
     end
 
     subgraph DATA["💾  DATA LAYER — Temporary memory only"]
-        G["🗂️ In-Memory Cache\n• Holds results for\n  current session only\n• Nothing saved to disk"]
+        G["🗂️ Session / Job Store\n• In-memory dict (default), or\n  Redis — same-host (Docker) or\n  Upstash (Vercel, see Update below)\n• TTL-bound, nothing on disk"]
     end
 
     subgraph EXT["🌐  EXTERNAL (Optional / Whitelisted)"]
@@ -162,6 +202,79 @@ graph TB
     style DATA fill:#f3e8ff,stroke:#9333ea,color:#581c87
     style EXT fill:#f1f5f9,stroke:#64748b,color:#334155
 ```
+
+---
+
+## Physical Architecture Diagram
+
+> **How to read this diagram:** unlike the logical diagram above (organized by responsibility),
+> this one shows **where each component actually runs** — for both of this codebase's real
+> deployment targets, side by side. The green box is the TTB-operated Docker host this ADR and
+> the FedRAMP SSP govern (`docs/fedramp/SSP-final.md` §4); the amber box is the project's
+> separate, public Vercel-hosted demo (`README.md` → "Vercel (hosted demo)"), which is **out of
+> scope** for the FedRAMP authorization boundary — see the "Update — Serverless Deployment
+> Target" section above for why both exist. The SSP's own authorization-boundary diagram
+> (`SSP-final.md` §4) covers only the green box, in more compliance-oriented detail (trust
+> boundary IDs TB-0..TB-4); this diagram's job is to show both deployments together for
+> engineering context.
+
+```mermaid
+flowchart TB
+    USER(["👤 Reviewer\n(browser)"])
+
+    subgraph DOCKER["🏛️ DOCKER / ON-PREM — TTB-operated, FedRAMP-authorized boundary"]
+        direction TB
+        FE1["📦 Frontend container\nnginx + React SPA\nport 80"]
+        BE1["📦 Backend container\nFastAPI (uvicorn)\nport 8000"]
+        TESS["💻 Tesseract OCR\nbundled binary, in-process\nno network"]
+        REDIS1[("🗄️ Redis (optional)\nsame-host container\nport 6379, no volume")]
+
+        FE1 -->|"Internal HTTP\nsame-origin /api/*\nDocker bridge network"| BE1
+        BE1 --- TESS
+        BE1 -.->|"optional —\nREDIS_URL set"| REDIS1
+    end
+
+    subgraph VERCEL["☁️ VERCEL — public hosted demo, OUT OF SCOPE for the FedRAMP SSP"]
+        direction TB
+        FE2["🌐 Static frontend\nVite build, Vercel CDN"]
+        BE2["⚡ Backend\nFastAPI as Vercel\nServerless Functions"]
+        REDIS2[("🗄️ Upstash Redis\nexternal, REQUIRED\nrediss:// TLS")]
+
+        FE2 -->|"/api/* routed to\nbackend functions"| BE2
+        BE2 ==>|"REQUIRED —\ncross-invocation state"| REDIS2
+    end
+
+    USER -->|"HTTPS + session cookie"| FE1
+    USER -->|"HTTPS + session cookie"| FE2
+
+    BE1 -->|"HTTPS/TLS, optional\nOCR_MODE=auto"| CLAUDE["☁️ Claude Vision API\n(Anthropic — external,\nshared by both deployments)"]
+    BE2 -->|"HTTPS/TLS, optional\nOCR_MODE=auto"| CLAUDE
+
+    classDef docker fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d
+    classDef vercel fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f
+    classDef ext fill:#f1f5f9,stroke:#64748b,color:#334155
+    class DOCKER docker
+    class VERCEL vercel
+    class CLAUDE ext
+```
+
+**Reading the diagram:**
+
+- **Same application code, two different storage topologies.** Both backends run the exact
+  same `backend/app/session.py`/`backend/batch/store.py` code; the only difference is whether
+  `REDIS_URL` points at a same-host container (Docker, optional, dashed line) or an external
+  Upstash instance (Vercel, solid/required line) — see `docs/fedramp/SESSION-MANAGEMENT.md`
+  "Storage backing."
+- **Tesseract has no Vercel equivalent.** The bundled `tesseract-ocr` binary (TB-2 in the SSP's
+  trust-boundary table) only exists in the Docker image; Vercel's managed Python runtime can't
+  install arbitrary system packages, so the Vercel backend relies on Claude Vision alone —
+  this is a real functional difference between the two deployments, not just a storage one.
+- **Claude Vision is the one dependency both deployments share**, drawn once outside both boxes
+  to make that explicit — same whitelisted endpoint, same optional/fail-over behavior
+  (`OCR_MODE`, ISSUE 2.1) in both places.
+- **If you're standing up a real TTB instance of ALVA, use the green box.** The amber box exists
+  only to showcase the PoC publicly and intentionally takes on a dependency (external Redis)
+  the authorized deployment doesn't need.
 
 ---
 
