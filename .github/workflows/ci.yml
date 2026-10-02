@@ -38,6 +38,20 @@ jobs:
   backend:
     name: Backend (pytest, bandit, pip-audit)
     runs-on: ubuntu-latest
+    services:
+      # Real Redis for tests/test_redis_integration.py (ISSUE 4.8) — the rest
+      # of the suite is unaffected: REDIS_URL is deliberately NOT set as a job
+      # env var, so app.redis_client stays in its default in-memory mode for
+      # every other test. Digest-pinned to match docker-compose.yml (CM-2).
+      redis:
+        image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -71,6 +85,9 @@ jobs:
         env:
           # Injected from GitHub Secrets only; tests must mock the API. Never logged.
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Points tests/test_redis_integration.py at the `redis` service
+          # above. Deliberately not REDIS_URL — see that file's docstring.
+          TEST_REDIS_URL: redis://localhost:6379/0
         run: pytest -q
 
       - name: Bandit (SAST)

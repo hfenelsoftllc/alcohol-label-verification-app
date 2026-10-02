@@ -185,7 +185,17 @@ How it's wired up:
   and batch-job stores (`backend/app/session.py`, `backend/batch/store.py`)
   are backed by Redis whenever `REDIS_URL` is set. With `REDIS_URL` unset
   (Docker/local/tests), they fall back to the original in-process dict
-  stores, unchanged.
+  stores, unchanged. **`REDIS_URL` is required for a working Vercel
+  deployment** — without it (or with it pointing at an unreachable Redis),
+  sessions and batch jobs won't persist across invocations, since a fresh
+  serverless instance has no memory of the last one. If Redis is
+  unreachable, requests still succeed (ISSUE 4.8 — a connection failure
+  degrades to the in-process store for that one invocation instead of
+  raising), but each request may silently get its own throwaway session, so
+  cookies/jobs stop working reliably until `REDIS_URL` is fixed.
+- CI exercises both paths against a real Redis service container
+  (`tests/test_redis_integration.py`), not just a mocked one — see
+  `.github/workflows/ci.yml`'s `backend` job.
 - [`.vercelignore`](.vercelignore) excludes dev/test files (`backend/.venv`,
   `backend/tests`, `frontend/node_modules`, etc.) from the deployment bundle.
 
@@ -197,7 +207,12 @@ To deploy your own copy:
    **Services** — required for `experimentalServices` in `vercel.json` to
    take effect.
 3. Add the **Upstash Redis** integration from the Vercel Marketplace and copy
-   its `rediss://...` connection string.
+   its `rediss://...` connection string. **Verify it actually works before
+   moving on** — from a machine with network access to it:
+   `redis-cli -u '<the rediss:// string>' ping` should print `PONG`. A
+   connection string that only *looks* right (wrong password, expired/deleted
+   instance, wrong region) is the single most common cause of the failure
+   mode below.
 4. Set project environment variables (`vercel env add <NAME> <environment>`):
    `REDIS_URL` (from step 3), `ANTHROPIC_API_KEY`, `SESSION_SECRET_KEY`
    (`openssl rand -hex 32`), `OCR_MODE=auto`, and `MAX_BATCH_MB=4`.
@@ -205,6 +220,17 @@ To deploy your own copy:
 
 Smoke-test with `GET /api/health` — it should return
 `{"status":"ok","version":"..."}`.
+
+**Troubleshooting: `GET /api/health` returns a 500 for every request.**
+This means `REDIS_URL` is set but Vercel's serverless functions can't
+actually reach it (wrong/expired Upstash connection string, or a network
+restriction). Every non-`/jobs/*` request mints a session via
+`session.create()`, which writes to Redis first; a connection failure there
+used to take down the entire app (fixed in ISSUE 4.8 — it now degrades
+instead). If you're still seeing 500s after that fix is deployed, the
+Upstash integration itself needs attention: re-check step 3 above, and
+confirm the environment variable is actually set for the **Production**
+environment (not just Preview) in the Vercel dashboard.
 
 ## FedRAMP Documentation
 

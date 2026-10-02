@@ -12,14 +12,19 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from redis.exceptions import RedisError
+
 from app import redis_client
 from app.audit import log_session_expired
 from app.models import ApplicationData, JobState, VerificationResult
+
+logger = logging.getLogger(__name__)
 
 #: How long an idle job is kept before being reaped. Configurable via
 #: SESSION_TTL_HOURS (default 4 — see .env.example).
@@ -116,11 +121,18 @@ def save_job(job: Job) -> None:
     """Persist `job`'s current state to Redis (no-op in in-memory mode).
 
     Called by the orchestrator as it progresses a job, so a `get_job` from a
-    different serverless invocation (Vercel) sees up-to-date results.
+    different serverless invocation (Vercel) sees up-to-date results. Falls
+    back to the in-process store if Redis is configured but unreachable, so
+    a Redis outage degrades job persistence instead of crashing the request
+    (ISSUE 4.8).
     """
     if redis_client.client is None:
         return
-    redis_client.client.setex(f"job:{job.job_id}", int(SESSION_TTL_SECONDS), json.dumps(_job_to_dict(job)))
+    try:
+        redis_client.client.setex(f"job:{job.job_id}", int(SESSION_TTL_SECONDS), json.dumps(_job_to_dict(job)))
+    except RedisError:
+        logger.warning("Redis unavailable; falling back to in-process job store.", exc_info=True)
+        _JOBS[job.job_id] = job
 
 
 def create_job(total: int, session_id: str) -> Job:
@@ -136,13 +148,16 @@ def create_job(total: int, session_id: str) -> Job:
 def get_job(job_id: str) -> Job | None:
     """Look up a job, reaping (and returning None for) one that has expired."""
     if redis_client.client is not None:
-        data = redis_client.client.get(f"job:{job_id}")
-        if data is None:
-            return None
-        job = _job_from_dict(json.loads(data))
-        job.last_accessed = datetime.now(timezone.utc)
-        save_job(job)
-        return job
+        try:
+            data = redis_client.client.get(f"job:{job_id}")
+            if data is None:
+                return None
+            job = _job_from_dict(json.loads(data))
+            job.last_accessed = datetime.now(timezone.utc)
+            save_job(job)
+            return job
+        except RedisError:
+            logger.warning("Redis unavailable; falling back to in-process job store.", exc_info=True)
 
     job = _JOBS.get(job_id)
     if job is None:
