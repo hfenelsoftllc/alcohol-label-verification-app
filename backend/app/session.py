@@ -19,15 +19,19 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, Request, status
+from redis.exceptions import RedisError
 
 from app import redis_client
 from app.audit import log_session_expired
+
+logger = logging.getLogger(__name__)
 
 #: Name of the cookie carrying the signed session id (AC1).
 COOKIE_NAME = "session_id"
@@ -83,15 +87,25 @@ def _reap_expired() -> None:
 
 
 def create() -> Session:
-    """Mint and store a new session with a cryptographically random id (AC3)."""
+    """Mint and store a new session with a cryptographically random id (AC3).
+
+    Falls back to the in-process store if Redis is configured but
+    unreachable, so a Redis outage degrades session persistence instead of
+    failing every request (ISSUE 4.8).
+    """
     session = Session(session_id=secrets.token_urlsafe(32))
     if redis_client.client is not None:
-        redis_client.client.setex(
-            f"session:{session.session_id}",
-            int(SESSION_TTL_SECONDS),
-            json.dumps({"created_at": session.created_at.isoformat(), "last_accessed": session.last_accessed.isoformat()}),
-        )
-        return session
+        try:
+            redis_client.client.setex(
+                f"session:{session.session_id}",
+                int(SESSION_TTL_SECONDS),
+                json.dumps(
+                    {"created_at": session.created_at.isoformat(), "last_accessed": session.last_accessed.isoformat()}
+                ),
+            )
+            return session
+        except RedisError:
+            logger.warning("Redis unavailable; falling back to in-process session store.", exc_info=True)
     _reap_expired()
     _SESSIONS[session.session_id] = session
     return session
@@ -111,11 +125,14 @@ def validate_cookie(token: str | None) -> str | None:
         return None
 
     if redis_client.client is not None:
-        key = f"session:{session_id}"
-        if redis_client.client.get(key) is None:
-            return None
-        redis_client.client.expire(key, int(SESSION_TTL_SECONDS))
-        return session_id
+        try:
+            key = f"session:{session_id}"
+            if redis_client.client.get(key) is None:
+                return None
+            redis_client.client.expire(key, int(SESSION_TTL_SECONDS))
+            return session_id
+        except RedisError:
+            logger.warning("Redis unavailable; falling back to in-process session store.", exc_info=True)
 
     session = _SESSIONS.get(session_id)
     if session is None:
