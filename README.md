@@ -137,8 +137,7 @@ bandit -r . -x ./.venv
 pip-audit
 
 # Frontend: lint, unit tests, and dependency audit
-cd frontend
-npm run lint
+cd frontend 
 npm test
 npm audit
 ```
